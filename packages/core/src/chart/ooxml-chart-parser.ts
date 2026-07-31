@@ -404,7 +404,8 @@ function extractTitle(chartXmlObj: any, workbook: ExcelJS.Workbook): ChartTitleM
       }
     }
   }
-  return undefined;
+  // Excel 会把存在但未输入文字的标题节点显示为默认占位标题。
+  return { text: '图表标题', overlay };
 }
 
 // ===== 系列解析 =====
@@ -472,6 +473,26 @@ function parseSeries(
     marker: markerInfo?.marker,
     markerSize: markerInfo?.size,
   };
+
+  const dataLabelsNode = toArray(serNode['c:dLbls'])[0];
+  if (dataLabelsNode) {
+    const boolVal = (key: string): boolean => {
+      const node = toArray(dataLabelsNode[key])[0];
+      return node?.['@_val'] === '1' || node === true;
+    };
+    const positionMap: Record<string, NonNullable<ChartSeriesModel['dataLabels']>['position']> = {
+      t: 'top', b: 'bottom', l: 'left', r: 'right', ctr: 'center',
+      inBase: 'insideBottom', inEnd: 'insideTop', bestFit: 'top',
+    };
+    const positionCode = toArray(dataLabelsNode['c:dLblPos'])[0]?.['@_val'];
+    series.dataLabels = {
+      showValue: boolVal('c:showVal'),
+      showCategoryName: boolVal('c:showCatName'),
+      showSeriesName: boolVal('c:showSerName'),
+      showPercent: boolVal('c:showPercent'),
+      position: positionMap[positionCode] || 'top',
+    };
+  }
 
   // 根据图表类型解析数据
   switch (chartType) {

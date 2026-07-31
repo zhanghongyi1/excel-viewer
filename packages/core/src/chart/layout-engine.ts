@@ -201,10 +201,6 @@ function computeLegendLayout(
 ): LayoutRect | null {
   const legend = model.legend;
   if (!legend || !legend.visible) return null;
-  if (model.series.length <= 1 && model.type !== 'combo') {
-    // 单系列非组合图通常不显示图例
-    return null;
-  }
 
   const position = legend.position;
   if (position === 'top' || position === 'bottom') {

@@ -100,6 +100,14 @@ export interface ChartSeriesModel {
   yAxisIndex?: 0 | 1;
   /** 面积填充透明度 (0-1) */
   areaOpacity?: number;
+  /** Excel 数据标签配置 */
+  dataLabels?: {
+    showValue?: boolean;
+    showCategoryName?: boolean;
+    showSeriesName?: boolean;
+    showPercent?: boolean;
+    position?: 'top' | 'bottom' | 'left' | 'right' | 'inside' | 'insideTop' | 'insideBottom' | 'center';
+  };
   /** 是否堆积 */
   stack?: string;
   /** 股价图 OHLC 数据 */

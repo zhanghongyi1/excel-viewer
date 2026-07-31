@@ -118,7 +118,6 @@ function applyLegend(
 ): void {
   const legend = model.legend;
   if (!legend || !legend.visible) return;
-  if (model.series.length <= 1 && model.type !== 'combo') return;
 
   const posMap: Record<string, { left?: string | number; right?: string | number; top?: string | number; bottom?: number | string; orient?: string }> = {
     bottom: { bottom: 2, left: 'center' },
@@ -207,7 +206,7 @@ function buildValueAxis(
   const axis: Record<string, any> = {
     type: 'value',
     axisLabel: { fontSize: 9 },
-    splitLine: { lineStyle: { type: 'dashed', color: '#eee' } },
+    splitLine: { lineStyle: { type: 'solid', color: '#d9d9d9', width: 1 } },
   };
   if (axisModel?.min !== undefined) axis.min = axisModel.min;
   if (axisModel?.max !== undefined) axis.max = axisModel.max;
@@ -340,11 +339,32 @@ function convertSeries(
     series.lineStyle.type = dashMap[s.lineStyle] || 'solid';
   }
 
+  if (s.dataLabels && Object.values(s.dataLabels).some(Boolean)) {
+    series.label = {
+      show: true,
+      position: s.dataLabels.position || 'top',
+      color: '#595959',
+      fontSize: 12,
+      formatter: (params: any) => {
+        const parts: string[] = [];
+        if (s.dataLabels?.showSeriesName) parts.push(s.name);
+        if (s.dataLabels?.showCategoryName) parts.push(String(params.name ?? ''));
+        if (s.dataLabels?.showValue) {
+          const raw = Array.isArray(params.value) ? params.value[params.value.length - 1] : params.value;
+          parts.push(typeof raw === 'number' ? String(Number(raw.toPrecision(12))) : String(raw ?? ''));
+        }
+        if (s.dataLabels?.showPercent && params.percent !== undefined) parts.push(`${params.percent}%`);
+        return parts.join(' ');
+      },
+    };
+  }
+
   // 按图表类型处理数据
   switch (s.type) {
     case 'bar': {
       series.data = s.data || [];
-      series.barMaxWidth = 40;
+      if (s.barWidth !== undefined) series.barWidth = s.barWidth;
+      if (model.plotArea?.gapWidth !== undefined) series.barCategoryGap = `${model.plotArea.gapWidth}%`;
       if (model.grouping === 'stacked' || model.grouping === 'percentStacked') {
         series.stack = model.grouping;
       }
@@ -457,5 +477,13 @@ function generateDefaultCategories(model: ChartModel): string[] {
 
 /** 清理 option 中的 undefined 值 */
 function cleanOption(obj: any): any {
-  return JSON.parse(JSON.stringify(obj, (_k, v) => (v === undefined ? undefined : v)));
+  if (Array.isArray(obj)) return obj.map(cleanOption);
+  if (obj && typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) cleaned[key] = cleanOption(value);
+    }
+    return cleaned;
+  }
+  return obj;
 }
