@@ -22,7 +22,6 @@ import type {
   CfRule,
   RichTextRun,
 } from '../types';
-
 // ===== 常量定义 =====
 
 /** 默认列宽 (像素) */
@@ -513,7 +512,10 @@ function colLetterToNumber(letters: string): number {
 /**
  * 解析单个工作表
  */
-function parseSheet(worksheet: ExcelJS.Worksheet, sheetIndex: number): ParsedSheet {
+function parseSheet(
+  worksheet: ExcelJS.Worksheet,
+  sheetIndex: number
+): ParsedSheet {
   const rows: ParsedCell[][] = [];
   const merges: MergeInfo[] = [];
   const colWidths: number[] = [];
@@ -802,9 +804,12 @@ function parseSheet(worksheet: ExcelJS.Worksheet, sheetIndex: number): ParsedShe
  * 解析 Excel 文件 (ArrayBuffer)
  *
  * @param buffer - Excel 文件的 ArrayBuffer 数据
+ * @param options - 解析选项
  * @returns Promise<ParsedWorkbook> 解析后的工作簿数据
  */
-export async function parseExcel(buffer: ArrayBuffer): Promise<ParsedWorkbook> {
+export async function parseExcel(
+  buffer: ArrayBuffer
+): Promise<ParsedWorkbook> {
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);

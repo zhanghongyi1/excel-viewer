@@ -62,9 +62,9 @@ export interface ChartLayout {
 const TITLE_HEIGHT = 22;
 const LEGEND_HORIZONTAL_HEIGHT = 20;
 const LEGEND_VERTICAL_WIDTH = 70;
-const DEFAULT_AXIS_WIDTH = 40;
-const DEFAULT_AXIS_HEIGHT = 22;
-const MIN_PLOT_PADDING = 8;
+const DEFAULT_AXIS_WIDTH = 32;
+const DEFAULT_AXIS_HEIGHT = 18;
+const MIN_PLOT_PADDING = 6;
 const MAX_LABEL_LENGTH_BEFORE_ROTATE = 8;
 const ROTATE_ANGLE = 30;
 const MIN_CONTAINER_SIZE = 50;
@@ -289,7 +289,7 @@ function computeYAxisWidth(model: ChartModel, containerWidth: number): number {
   }
 
   // 每位约 6px + 边距
-  const estimatedWidth = Math.min(maxDigits * 6 + 12, containerWidth * 0.3);
+  const estimatedWidth = Math.min(maxDigits * 6 + 10, containerWidth * 0.3);
   return Math.max(DEFAULT_AXIS_WIDTH, Math.round(estimatedWidth));
 }
 
@@ -319,14 +319,14 @@ export function layoutToGrid(layout: ChartLayout): {
   containLabel: boolean;
 } {
   if (layout.isAxisless) {
-    return { left: '8%', right: '8%', top: '8%', bottom: '8%', containLabel: false };
+    return { left: '6%', right: '6%', top: '6%', bottom: '6%', containLabel: false };
   }
 
   return {
-    left: layout.yAxisWidth,
-    right: Math.max(layout.yAxisSecondaryWidth, 12),
-    top: layout.plotArea.top,
-    bottom: Math.max(layout.xAxisHeight + 4, 8),
-    containLabel: true,
+    left: Math.max(layout.yAxisWidth, 6),
+    right: Math.max(layout.yAxisSecondaryWidth, 6),
+    top: Math.max(layout.plotArea.top, 4),
+    bottom: Math.max(layout.xAxisHeight + 2, 6),
+    containLabel: false,
   };
 }

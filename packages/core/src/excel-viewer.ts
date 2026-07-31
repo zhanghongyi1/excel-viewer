@@ -1,3 +1,4 @@
+import * as echarts from 'echarts';
 import type { ExcelSource, ExcelViewerOptions, ParsedWorkbook, ParsedSheet } from './types';
 import type { ChartModel } from './chart/chart-model';
 import { loadData } from './loader';
@@ -9,7 +10,7 @@ import { ChartRenderer } from './renderer/chart-renderer';
 import { ImageRenderer } from './renderer/image-renderer';
 
 export class ExcelViewer {
-  private options: Required<Omit<ExcelViewerOptions, 'target' | 'src' | 'onRendered' | 'onError' | 'onSheetChange' | 'echarts' | 'google' | 'chartBackend'>> & Pick<ExcelViewerOptions, 'target' | 'src' | 'onRendered' | 'onError' | 'onSheetChange' | 'echarts' | 'google' | 'chartBackend'>;
+  private options: Required<Omit<ExcelViewerOptions, 'target' | 'src' | 'onRendered' | 'onError' | 'onSheetChange' | 'echarts' | 'chartBackend' | 'echartsRenderer'>> & Pick<ExcelViewerOptions, 'target' | 'src' | 'onRendered' | 'onError' | 'onSheetChange' | 'echarts' | 'chartBackend' | 'echartsRenderer'>;
   private rootElement: HTMLElement | null = null;
   private wrapperEl: HTMLDivElement | null = null;
   private loadingEl: HTMLDivElement | null = null;
@@ -29,10 +30,12 @@ export class ExcelViewer {
       width: '100%',
       height: '100%',
       showToolbar: true,
-      // 默认使用 Google Charts 套件渲染图表
-      chartBackend: 'google',
-      // 自动探测 window.google（如果页面已加载 Google Charts loader.js）
-      google: typeof window !== 'undefined' ? (window as any).google : undefined,
+      // 默认使用 ECharts 渲染图表（本地 npm 包，完全离线）
+      chartBackend: 'echarts',
+      // 默认使用 SVG 渲染
+      echartsRenderer: 'svg',
+      // 默认注入 echarts 实例
+      echarts,
       ...options,
     };
 
@@ -147,8 +150,8 @@ export class ExcelViewer {
           this.chartRenderer.init({
             container: this.tableRenderer.getScrollContainer()!,
             echartsLib: this.options.echarts,
-            googleLib: this.options.google,
             backend: this.options.chartBackend || 'auto',
+            renderer: this.options.echartsRenderer,
           });
         }
         this.renderCurrentSheetCharts();

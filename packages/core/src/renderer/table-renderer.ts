@@ -102,14 +102,16 @@ export class TableRenderer {
     const top = r < freezeTop.length ? freezeTop[r] : undefined;
     const left = c < freezeLeft.length ? freezeLeft[c] : undefined;
 
+    // z-index 层级需高于图表浮层(z-index:5)和图片浮层(z-index:0)，
+    // 确保冻结表头始终覆盖在图表/图片之上
     if (top !== undefined && left !== undefined) {
-      return `position:sticky;top:${top}px;left:${left}px;z-index:3;`;
+      return `position:sticky;top:${top}px;left:${left}px;z-index:13;`;
     }
     if (top !== undefined) {
-      return `position:sticky;top:${top}px;z-index:2;`;
+      return `position:sticky;top:${top}px;z-index:12;`;
     }
     if (left !== undefined) {
-      return `position:sticky;left:${left}px;z-index:1;`;
+      return `position:sticky;left:${left}px;z-index:11;`;
     }
     return '';
   }

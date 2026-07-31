@@ -1,17 +1,15 @@
 /**
  * 图表渲染器（统一入口）
  *
- * 支持三种渲染后端:
+ * 支持两种渲染后端:
  *   1. ECharts Adapter      — 使用 ECharts 库高质量渲染（需要传入 echartsLib）
- *   2. Canvas Renderer       — 自研 Canvas 渲染引擎（零外部依赖）
- *   3. Google Charts Adapter — 使用 Google Visualization API 渲染
+ *   2. Canvas Renderer      — 自研 Canvas 渲染引擎（零外部依赖）
  *
  * 自动选择策略:
  *   - 如果传入了 echartsLib → 使用 ECharts
- *   - 如果传入了 googleLib   → 使用 Google Charts
  *   - 否则 → 使用 Canvas Renderer
  *
- * 三种模式都基于 ChartModel，
+ * 两种模式都基于 ChartModel，
  * 用户可通过 renderer 选项强制指定。
  */
 
@@ -20,7 +18,7 @@ import type { ChartModel } from '../chart/chart-model';
 import { computeLayout } from '../chart/layout-engine';
 import { convertToEChartsOption } from '../chart/echarts-converter';
 import { CanvasChartRenderer } from '../chart/canvas-chart-renderer';
-import { GoogleChartsRenderer } from '../chart/google-charts-renderer';
+import { SVGRenderer } from 'echarts/renderers';
 
 /** 像素区域 */
 interface Rect {
@@ -33,18 +31,18 @@ interface Rect {
 /** 单元格位置查询函数类型 */
 export type PositionFn = (col: number, row: number) => Rect;
 
-/** 渲染后端类型（默认 google） */
-export type ChartBackend = 'google' | 'echarts' | 'canvas' | 'auto';
+/** 渲染后端类型（默认 echarts） */
+export type ChartBackend = 'echarts' | 'canvas' | 'auto';
 
 interface ChartRendererConfig {
   /** 表格容器（图表浮层将叠加在此容器上方） */
   container: HTMLElement;
   /** ECharts 库引用（可选，不传则使用 Canvas 渲染） */
   echartsLib?: any;
-  /** Google Charts 库引用（可选，传入则启用 Google 后端） */
-  googleLib?: any;
   /** 渲染后端（默认 auto） */
   backend?: ChartBackend;
+  /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
+  renderer?: 'svg' | 'canvas';
   /** 主题颜色序列 */
   colorPalette?: string[];
 }
@@ -52,8 +50,8 @@ interface ChartRendererConfig {
 export class ChartRenderer {
   private container: HTMLElement | null = null;
   private echartsLib: any = null;
-  private googleLib: any = null;
   private backend: ChartBackend = 'auto';
+  private renderer: 'svg' | 'canvas' = 'svg';
 
   // ECharts 模式
   private chartContainers: Map<string, HTMLElement> = new Map();
@@ -62,11 +60,8 @@ export class ChartRenderer {
   // Canvas 模式
   private canvasRenderer: CanvasChartRenderer | null = null;
 
-  // Google Charts 模式
-  private googleRenderer: GoogleChartsRenderer | null = null;
-
   // 实际使用的后端（auto 解析后的结果）
-  private activeBackend: 'echarts' | 'canvas' | 'google' = 'echarts';
+  private activeBackend: 'echarts' | 'canvas' = 'echarts';
 
   private currentCharts: ChartModel[] = [];
   private positionFn: PositionFn | null = null;
@@ -84,19 +79,17 @@ export class ChartRenderer {
   init(config: ChartRendererConfig): void {
     this.container = config.container;
     this.echartsLib = config.echartsLib;
-    this.googleLib = config.googleLib;
     this.backend = config.backend || 'auto';
+    this.renderer = config.renderer || 'svg';
 
     if (!this.container) {
       throw new Error('[ChartRenderer] Container element is required');
     }
 
     // 解析 auto → 选择实际后端
-    // 优先级: Google Charts > ECharts > Canvas
+    // 优先级: ECharts > Canvas
     if (this.backend === 'auto') {
-      if (this.googleLib || (typeof window !== 'undefined' && (window as any).google)) {
-        this.activeBackend = 'google';
-      } else if (this.echartsLib) {
+      if (this.echartsLib) {
         this.activeBackend = 'echarts';
       } else {
         this.activeBackend = 'canvas';
@@ -111,13 +104,6 @@ export class ChartRenderer {
         console.warn('[ChartRenderer] ECharts backend selected but echartsLib not provided, falling back to canvas.');
         this.activeBackend = 'canvas';
       }
-    }
-
-    if (this.activeBackend === 'google') {
-      this.googleRenderer = new GoogleChartsRenderer({
-        container: this.container,
-        google: this.googleLib,
-      });
     }
 
     if (this.activeBackend === 'canvas') {
@@ -138,7 +124,7 @@ export class ChartRenderer {
   }
 
   /** 获取当前使用的渲染后端 */
-  getActiveBackend(): 'echarts' | 'canvas' | 'google' {
+  getActiveBackend(): 'echarts' | 'canvas' {
     return this.activeBackend;
   }
 
@@ -172,8 +158,6 @@ export class ChartRenderer {
 
       if (this.activeBackend === 'canvas' && this.canvasRenderer) {
         return this.renderChartCanvas(chart, area);
-      } else if (this.activeBackend === 'google' && this.googleRenderer) {
-        return this.renderChartGoogle(chart, area);
       } else {
         return this.renderChartECharts(chart, area);
       }
@@ -217,7 +201,10 @@ export class ChartRenderer {
       this.container.appendChild(containerEl);
       this.chartContainers.set(chart.id, containerEl);
 
-      const instance = this.echartsLib.init(containerEl);
+      // 注册 SVG 渲染器（自定义 echarts/core 注入时也需要）
+      try { this.echartsLib.use?.([SVGRenderer]); } catch { /* ignore */ }
+
+      const instance = this.echartsLib.init(containerEl, null, { renderer: this.renderer });
       this.echartsInstances.set(chart.id, instance);
     }
 
@@ -248,25 +235,6 @@ export class ChartRenderer {
     return true;
   }
 
-  // ===== Google Charts 渲染 =====
-
-  private renderChartGoogle(chart: ChartModel, area: Rect): boolean {
-    if (!this.googleRenderer) return false;
-
-    // Google Charts 是异步的，但这里 fire-and-forget 返回 true
-    // 渲染完成后容器会自动更新
-    this.googleRenderer.renderChart(chart, {
-      left: area.left,
-      top: area.top,
-      width: area.width,
-      height: area.height,
-    }).catch((err) => {
-      console.error(`[ChartRenderer] Google Charts render failed for ${chart.id}:`, err);
-    });
-
-    return true;
-  }
-
   // ===== 批量渲染 =====
 
   renderAllCharts(charts: ChartModel[], positionFn?: PositionFn): void {
@@ -276,15 +244,6 @@ export class ChartRenderer {
     if (this.activeBackend === 'canvas' && this.canvasRenderer) {
       // Canvas 模式
       this.canvasRenderer.renderAllCharts(charts, (chart) => this.calculateArea(chart.anchor));
-    } else if (this.activeBackend === 'google' && this.googleRenderer) {
-      // Google Charts 模式 — 先清理不存在的，再异步渲染
-      const newIds = new Set(charts.map(c => c.id));
-      for (const [id] of this.chartContainers) {
-        if (!newIds.has(id)) this.removeChart(id);
-      }
-      this.googleRenderer.renderAllCharts(charts, (chart) => this.calculateArea(chart.anchor)).catch((err) => {
-        console.error('[ChartRenderer] Google Charts renderAll failed:', err);
-      });
     } else {
       // ECharts 模式 — 先清理不存在的
       const newIds = new Set(charts.map(c => c.id));
@@ -336,11 +295,6 @@ export class ChartRenderer {
       return;
     }
 
-    if (this.activeBackend === 'google' && this.googleRenderer) {
-      this.googleRenderer.updatePositions((chart) => this.calculateArea(chart.anchor)).catch(() => {});
-      return;
-    }
-
     // ECharts 模式
     for (const chart of this.currentCharts) {
       const area = this.calculateArea(chart.anchor);
@@ -378,9 +332,6 @@ export class ChartRenderer {
       containerEl.parentNode.removeChild(containerEl);
     }
     this.chartContainers.delete(chartId);
-
-    // Google Charts 模式
-    this.googleRenderer?.removeChart(chartId);
   }
 
   clearAll(): void {
@@ -390,16 +341,11 @@ export class ChartRenderer {
     }
     // Canvas 模式
     this.canvasRenderer?.clearAll();
-    // Google Charts 模式
-    this.googleRenderer?.clearAll();
     this.currentCharts = [];
   }
 
   getChartCount(): number {
     if (this.activeBackend === 'canvas' && this.canvasRenderer) {
-      return this.currentCharts.length;
-    }
-    if (this.activeBackend === 'google' && this.googleRenderer) {
       return this.currentCharts.length;
     }
     return this.echartsInstances.size;
@@ -411,9 +357,6 @@ export class ChartRenderer {
 
     this.canvasRenderer?.destroy();
     this.canvasRenderer = null;
-
-    this.googleRenderer?.destroy();
-    this.googleRenderer = null;
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -427,6 +370,5 @@ export class ChartRenderer {
     this.container = null;
     this.positionFn = null;
     this.echartsLib = null;
-    this.googleLib = null;
   }
 }

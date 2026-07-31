@@ -111,8 +111,9 @@ function toArray(val: any): any[] {
 
 /** 提取文本节点值 */
 function extractText(node: any): string {
-  if (!node) return '';
-  if (typeof node === 'string') return node;
+  if (node === undefined || node === null) return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join('');
   if (node['#text']) return String(node['#text']);
   if (node['c:v']) return Array.isArray(node['c:v']) ? String(node['c:v'][0]) : String(node['c:v']);
   return '';
@@ -364,6 +365,10 @@ function extractTitle(chartXmlObj: any, workbook: ExcelJS.Workbook): ChartTitleM
   const tn = titleArr[0];
   if (!tn) return undefined;
 
+  // overlay 标志 (c:overlay 子元素，val 属性)
+  const overlayNode = toArray(tn['c:overlay'])[0];
+  const overlay = overlayNode?.['@_val'] === '1';
+
   // 富文本标题
   const tx = toArray(tn['c:tx'])[0];
   if (tx) {
@@ -378,7 +383,7 @@ function extractTitle(chartXmlObj: any, workbook: ExcelJS.Workbook): ChartTitleM
           if (t) texts.push(typeof t === 'string' ? t : extractText(t));
         }
       }
-      if (texts.length > 0) return { text: texts.join('') };
+      if (texts.length > 0) return { text: texts.join(''), overlay };
     }
     // 引用单元格标题
     const strRef = toArray(tx['c:strRef'])[0];
@@ -389,18 +394,16 @@ function extractTitle(chartXmlObj: any, workbook: ExcelJS.Workbook): ChartTitleM
       if (parsed) {
         const values = readCellValues(workbook, parsed.sheetName, parsed.startCol, parsed.startRow, parsed.endCol, parsed.endRow);
         if (values.length > 0 && values[0].length > 0) {
-          return { text: String(values[0][0] || '') };
+          return { text: String(values[0][0] || ''), overlay };
         }
       }
       const strCache = toArray(strRef['c:strCache'])[0];
       if (strCache) {
         const cached = parseStrPtValues(strCache);
-        if (cached.length > 0) return { text: cached[0] };
+        if (cached.length > 0) return { text: cached[0], overlay };
       }
     }
   }
-  // overlay 标志
-  const overlay = tn['@_overlay'] === '1';
   return undefined;
 }
 

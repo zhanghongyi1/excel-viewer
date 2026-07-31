@@ -149,7 +149,8 @@ exports[`Chart Parser — Line Chart > should match snapshot 1`] = `
   ],
   "seriesCount": 1,
   "title": {
-    "text": "",
+    "overlay": false,
+    "text": "Line Chart Title",
   },
   "type": "line",
 }

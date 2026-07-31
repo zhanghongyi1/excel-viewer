@@ -282,15 +282,10 @@ export interface ViewerOptions {
    * 如果不传入，则使用自研 Canvas 渲染引擎
    */
   echarts?: any;
-  /**
-   * Google Charts 对象（window.google）
-   * 默认使用 Google Charts 套件渲染图表
-   * loader.js 由框架内部自动加载，无需手动引入
-   * 如已页面级加载可传入以跳过重复加载
-   */
-  google?: any;
-  /** 图表渲染后端: 'google' | 'echarts' | 'canvas' | 'auto'（默认 google） */
-  chartBackend?: 'google' | 'echarts' | 'canvas' | 'auto';
+  /** 图表渲染后端: 'echarts' | 'canvas' | 'auto'（默认 echarts） */
+  chartBackend?: 'echarts' | 'canvas' | 'auto';
+  /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
+  echartsRenderer?: 'svg' | 'canvas';
   /** 数据预处理钩子（在 exceljs 解析后、渲染前调用） */
   beforeTransformData?: (workbook: any) => any;
   /** 数据转换钩子（在转换为渲染数据时调用） */
@@ -316,10 +311,10 @@ export interface ExcelViewerOptions {
   showToolbar?: boolean;
   /** ECharts 实例（注入式按需加载，不传则使用 Canvas 渲染） */
   echarts?: any;
-  /** Google Charts 对象（window.google，默认使用 Google 套件渲染） */
-  google?: any;
-  /** 图表渲染后端（默认 google） */
-  chartBackend?: 'google' | 'echarts' | 'canvas' | 'auto';
+  /** 图表渲染后端（默认 echarts） */
+  chartBackend?: 'echarts' | 'canvas' | 'auto';
+  /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
+  echartsRenderer?: 'svg' | 'canvas';
   /** 渲染完成回调 */
   onRendered?: () => void;
   /** 错误回调 */

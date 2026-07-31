@@ -50,7 +50,14 @@ viewer.render(file);
 viewer.setSheet(1);
 ```
 
-## 四、构建验证
+## 四、技术选型
+
+| 模块 | 方案 | 备注 |
+|------|------|------|
+| 多人协作 | **Yjs（CRDT）** | 替代方案（原方案未定/已弃用） |
+| 公式引擎 | **HyperFormula** | 后续可按需替换为其他引擎 |
+
+## 五、构建验证
 
 - `pnpm build` — 构建 core 包
 - `pnpm dev` — 启动 playground 演示

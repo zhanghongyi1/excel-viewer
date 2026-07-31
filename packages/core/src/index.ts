@@ -39,7 +39,7 @@ export { parseExcel, loadRawWorkbook } from './parser/excel-parser';
 export { parseCharts } from './parser/chart-parser';
 export { parsePivotTables } from './parser/pivot-parser';
 
-// Chart 模块（OOXML Parser + ChartModel + Layout Engine + ECharts Adapter + Canvas Renderer + Google Charts Adapter）
+// Chart 模块（OOXML Parser + ChartModel + Layout Engine + ECharts Adapter + Canvas Renderer）
 export type {
   ChartType as ChartModelType,
   BarDirection,
@@ -64,8 +64,6 @@ export type {
   ThemeColorScheme,
   ThemeFontScheme,
   ChartTheme,
-  GoogleChartConfig,
-  GoogleRendererConfig,
 } from './chart';
 export {
   createDefaultAxis,
@@ -74,13 +72,11 @@ export {
   layoutToGrid,
   parseChartXmlToModel,
   convertToEChartsOption,
-  convertToGoogleChart,
   parseThemeXml,
   parseThemeFromZip,
   themeColorsToMap,
   DEFAULT_THEME,
   CanvasChartRenderer,
-  GoogleChartsRenderer,
 } from './chart';
 
 // Renderer

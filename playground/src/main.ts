@@ -1,16 +1,14 @@
 import { ExcelViewer } from '@excel-preview/core';
 
-// 默认使用 Google Charts 套件渲染图表
-// loader.js 由框架内部自动加载，无需在 HTML 中手动引入
+// 默认使用 ECharts 渲染图表（本地 npm 包，完全离线，无外网请求）
 const viewer = new ExcelViewer({
   target: '#viewer-container',
   width: '100%',
   height: '100%',
   showToolbar: true,
-  // chartBackend 默认 'google'，无需手动指定
+  // chartBackend 默认 'echarts'，无需手动指定
   // 如需切换后端:
-  //   chartBackend: 'canvas'  — 自研 Canvas 渲染引擎
-  //   chartBackend: 'echarts' — ECharts（需传入 echarts 实例）
+  //   chartBackend: 'canvas'  — 自研 Canvas 渲染引擎（零外部依赖）
   onRendered: () => showStatus('渲染完成', 'success'),
   onError: (err) => showStatus(err.message, 'error'),
   onSheetChange: (name, idx) => console.log(`切换到: ${name} (${idx})`),

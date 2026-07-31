@@ -17,8 +17,8 @@
         "dist"
     ],
     "scripts": {
-        "build": "tsup src/index.ts --format esm,cjs --dts --clean --external exceljs --external google-charts",
-        "watch": "tsup src/index.ts --format esm,cjs --dts --watch --external exceljs --external google-charts",
+        "build": "tsup src/index.ts --format esm,cjs --dts --clean --external exceljs --external echarts",
+        "watch": "tsup src/index.ts --format esm,cjs --dts --watch --external exceljs --external echarts",
         "dev": "pnpm watch",
         "test": "vitest run",
         "test:watch": "vitest",
@@ -26,9 +26,9 @@
     },
     "dependencies": {
         "dayjs": "^1.11.10",
+        "echarts": "^5.4.3",
         "exceljs": "^4.4.0",
         "fast-xml-parser": "^4.3.4",
-        "google-charts": "^2.0.0",
         "jszip": "^3.10.1"
     },
     "devDependencies": {
