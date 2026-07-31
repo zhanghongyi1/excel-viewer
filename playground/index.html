@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>@excel-preview/core Playground</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fa; color: #333; padding: 20px;
+    }
+    .app { max-width: 1200px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 26px; color: #1a1a1a; }
+    header p { color: #666; font-size: 14px; margin-top: 4px; }
+    .controls {
+      background: #fff; padding: 16px 20px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px;
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    }
+    .controls label { font-size: 13px; color: #555; font-weight: 500; }
+    input[type="text"] {
+      flex: 1; min-width: 260px; padding: 8px 12px;
+      border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px;
+    }
+    input[type="text"]:focus { outline: none; border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,0.1); }
+    button {
+      padding: 8px 18px; background: #1890ff; color: #fff;
+      border: none; border-radius: 4px; cursor: pointer; font-size: 14px;
+      transition: background .2s;
+    }
+    button:hover { background: #40a9ff; }
+    button:disabled { background: #d9d9d9; cursor: not-allowed; }
+    .file-label {
+      padding: 8px 18px; background: #52c41a; color: #fff;
+      border-radius: 4px; cursor: pointer; font-size: 14px;
+    }
+    .file-label:hover { background: #73d13d; }
+    input[type="file"] { display: none; }
+    .status-bar { margin-top: 4px; width: 100%; }
+    .status { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 13px; }
+    .status.loading { background: #e6f7ff; color: #1890ff; }
+    .status.error { background: #fff2f0; color: #ff4d4f; }
+    .status.success { background: #f6ffed; color: #52c41a; }
+    #viewer-container {
+      background: #fff; border-radius: 8px; overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08); height: 700px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>@excel-preview/core</h1>
+      <p>Excel 表格渲染 + OpenXML 图表解析（纯 JS，无框架绑定）</p>
+    </header>
+
+    <div class="controls">
+      <label>URL 加载:</label>
+      <input type="text" id="url-input" placeholder="输入 .xlsx 文件 URL..." value="https://raw.githubusercontent.com/exceljs/exceljs/master/spec/integration/data/sample.xlsx" />
+      <button id="btn-load-url">加载</button>
+      <label class="file-label" for="file-input">选择本地文件</label>
+      <input type="file" id="file-input" accept=".xlsx" />
+      <div class="status-bar">
+        <span id="status" class="status" style="display:none"></span>
+      </div>
+    </div>
+
+    <div id="viewer-container"></div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

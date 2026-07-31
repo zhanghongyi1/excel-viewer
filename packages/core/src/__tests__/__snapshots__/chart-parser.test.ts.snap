@@ -1,0 +1,249 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Chart Parser — Area Chart > should match snapshot 1`] = `
+{
+  "barDirection": undefined,
+  "categories": undefined,
+  "grouping": undefined,
+  "hasLegend": false,
+  "hasSecondaryAxis": false,
+  "id": "area_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": undefined,
+  "series": [
+    {
+      "color": "#5B9BD5",
+      "dataLength": 4,
+      "hasOhlc": false,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 1",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "area",
+    },
+  ],
+  "seriesCount": 1,
+  "title": undefined,
+  "type": "area",
+}
+`;
+
+exports[`Chart Parser — Bar Chart > should match snapshot 1`] = `
+{
+  "barDirection": "col",
+  "categories": undefined,
+  "grouping": "clustered",
+  "hasLegend": false,
+  "hasSecondaryAxis": false,
+  "id": "bar_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": undefined,
+  "series": [
+    {
+      "color": "#4F81BD",
+      "dataLength": 5,
+      "hasOhlc": false,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 1",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "bar",
+    },
+  ],
+  "seriesCount": 1,
+  "title": undefined,
+  "type": "bar",
+}
+`;
+
+exports[`Chart Parser — Combo Chart > should match snapshot 1`] = `
+{
+  "barDirection": "col",
+  "categories": undefined,
+  "grouping": "clustered",
+  "hasLegend": false,
+  "hasSecondaryAxis": true,
+  "id": "combo_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": [
+    {
+      "grouping": "clustered",
+      "seriesIndices": [
+        0,
+      ],
+      "type": "bar",
+      "yAxisIndex": 0,
+    },
+    {
+      "grouping": undefined,
+      "seriesIndices": [
+        1,
+      ],
+      "type": "line",
+      "yAxisIndex": 1,
+    },
+  ],
+  "series": [
+    {
+      "color": "#5B9BD5",
+      "dataLength": 3,
+      "hasOhlc": false,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 1",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "bar",
+    },
+    {
+      "color": "#ED7D31",
+      "dataLength": 3,
+      "hasOhlc": false,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 2",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "line",
+    },
+  ],
+  "seriesCount": 2,
+  "title": undefined,
+  "type": "combo",
+}
+`;
+
+exports[`Chart Parser — Line Chart > should match snapshot 1`] = `
+{
+  "barDirection": undefined,
+  "categories": undefined,
+  "grouping": undefined,
+  "hasLegend": false,
+  "hasSecondaryAxis": false,
+  "id": "line_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": undefined,
+  "series": [
+    {
+      "color": "#F79646",
+      "dataLength": 5,
+      "hasOhlc": false,
+      "lineStyle": "solid",
+      "lineWidth": 2,
+      "marker": "circle",
+      "name": "Series 1",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "line",
+    },
+  ],
+  "seriesCount": 1,
+  "title": {
+    "text": "",
+  },
+  "type": "line",
+}
+`;
+
+exports[`Chart Parser — Pie Chart > should match snapshot 1`] = `
+{
+  "barDirection": undefined,
+  "categories": undefined,
+  "grouping": undefined,
+  "hasLegend": false,
+  "hasSecondaryAxis": false,
+  "id": "pie_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": undefined,
+  "series": [
+    {
+      "color": "#5B9BD5",
+      "dataLength": 4,
+      "hasOhlc": false,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 1",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "pie",
+    },
+  ],
+  "seriesCount": 1,
+  "title": undefined,
+  "type": "pie",
+}
+`;
+
+exports[`Chart Parser — Scatter Chart > should match snapshot 1`] = `
+{
+  "barDirection": undefined,
+  "categories": undefined,
+  "grouping": undefined,
+  "hasLegend": false,
+  "hasSecondaryAxis": true,
+  "id": "scatter_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": undefined,
+  "series": [
+    {
+      "color": "#5B9BD5",
+      "dataLength": 0,
+      "hasOhlc": false,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 1",
+      "pointsLength": 3,
+      "smooth": false,
+      "type": "scatter",
+    },
+  ],
+  "seriesCount": 1,
+  "title": undefined,
+  "type": "scatter",
+}
+`;
+
+exports[`Chart Parser — Stock Chart > should match snapshot 1`] = `
+{
+  "barDirection": undefined,
+  "categories": undefined,
+  "grouping": undefined,
+  "hasLegend": false,
+  "hasSecondaryAxis": false,
+  "id": "stock_snapshot",
+  "is3D": false,
+  "legendPosition": undefined,
+  "plotGroups": undefined,
+  "series": [
+    {
+      "color": "#5B9BD5",
+      "dataLength": 3,
+      "hasOhlc": true,
+      "lineStyle": undefined,
+      "lineWidth": undefined,
+      "marker": undefined,
+      "name": "Series 1",
+      "pointsLength": 0,
+      "smooth": false,
+      "type": "stock",
+    },
+  ],
+  "seriesCount": 1,
+  "title": undefined,
+  "type": "stock",
+}
+`;

@@ -1,0 +1,1 @@
+{"name":"playground","private":true,"version":"0.1.0","type":"module","scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},"dependencies":{"@excel-preview/core":"workspace:*","echarts":"^5.4.3","google-charts":"^2.0.0"},"devDependencies":{"typescript":"^5.3.3","vite":"^5.1.0"}}
