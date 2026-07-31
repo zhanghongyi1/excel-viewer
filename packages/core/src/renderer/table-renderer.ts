@@ -210,6 +210,7 @@ export class TableRenderer {
     for (let c = 0; c < maxCol; c++) {
       if (sheet.hiddenCols?.has(c)) continue;
       const th = document.createElement('th');
+      th.dataset.col = String(c);
       const colWidth = getColWidth(sheet, c, this.colWidthOverrides);
       th.textContent = colNumToLetter(c);
       th.style.cssText = `
@@ -242,6 +243,7 @@ export class TableRenderer {
       tr.style.height = rowH + 'px';
 
       const rowTh = document.createElement('th');
+      rowTh.dataset.row = String(r);
       rowTh.textContent = String(r + 1);
       rowTh.style.cssText = `
         ${this.stickyStyle(r + 1, 0, freezeTop, freezeLeft)}
@@ -286,6 +288,8 @@ export class TableRenderer {
 
         const colWidth = getColWidth(sheet, c, this.colWidthOverrides);
         const td = document.createElement('td');
+        td.dataset.row = String(r);
+        td.dataset.col = String(c);
 
         const sticky = this.stickyStyle(r + 1, c + 1, freezeTop, freezeLeft);
         const posStyle = sticky ? '' : 'position:relative;';
@@ -354,20 +358,25 @@ export class TableRenderer {
     for (const cf of cfList) {
       try {
         const { startRow, startCol, endRow, endCol } = this.parseRange(cf.ref, sheet);
-        const rows = table.rows;
+        const numericValues: number[] = [];
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            const value = this.getParsedCell(sheet, r, c)?.value;
+            if (typeof value === 'number' && Number.isFinite(value)) numericValues.push(value);
+          }
+        }
+        numericValues.sort((a, b) => a - b);
 
         for (let r = startRow; r <= endRow; r++) {
           for (let c = startCol; c <= endCol; c++) {
-            const rowEl = rows[r + 1]; // +1 for header row
-            if (!rowEl) continue;
-            const cellEl = rowEl.cells[c + 1]; // +1 for row number column
+            const cellEl = table.querySelector<HTMLElement>(`td[data-row="${r}"][data-col="${c}"]`);
             if (!cellEl) continue;
 
             const cell = this.getParsedCell(sheet, r, c);
             if (!cell) continue;
 
             for (const rule of cf.rules) {
-              this.applyCfRule(cellEl, cell, rule);
+              this.applyCfRule(cellEl, cell, rule, numericValues);
             }
           }
         }
@@ -403,16 +412,14 @@ export class TableRenderer {
     return r[col];
   }
 
-  private applyCfRule(cellEl: HTMLElement, cell: ParsedCell, rule: CfRule): void {
-    const val = cell.value;
-
+  private applyCfRule(cellEl: HTMLElement, cell: ParsedCell, rule: CfRule, rangeValues: number[]): void {
     if (rule.type === 'colorScale' && rule.colorScale) {
-      this.applyColorScale(cellEl, cell, rule.colorScale);
+      this.applyColorScale(cellEl, cell, rule.colorScale, rangeValues);
       return;
     }
 
     if (rule.type === 'dataBar' && rule.dataBar) {
-      this.applyDataBar(cellEl, cell, rule.dataBar);
+      this.applyDataBar(cellEl, cell, rule.dataBar, rangeValues);
       return;
     }
 
@@ -466,33 +473,34 @@ export class TableRenderer {
   }
 
   private evaluateExpression(cell: ParsedCell, rule: CfRule): boolean {
-    // Simple formula evaluation: supports basic comparisons like A1>10
-    const formula = rule.formula?.[0] ?? '';
-    if (!formula) return false;
-    try {
-      const val = cell.value;
-      const parsed = formula
-        .replace(/[A-Z]+\d+/gi, String(val))
-        .replace(/>=/g, '>=')
-        .replace(/<=/g, '<=')
-        .replace(/<>/g, '!==');
-      // eslint-disable-next-line no-eval
-      return !!eval(parsed);
-    } catch {
-      return false;
+    // Deliberately support only a safe comparison subset. Workbook formulas are untrusted input.
+    const formula = (rule.formula?.[0] ?? '').trim().replace(/^=/, '');
+    const match = formula.match(/^(?:\$?[A-Z]+\$?\d+)\s*(>=|<=|<>|=|>|<)\s*(?:"([^"]*)"|(-?\d+(?:\.\d+)?))$/i);
+    if (!match) return false;
+    const expected: string | number = match[2] !== undefined ? match[2] : Number(match[3]);
+    const actual = cell.value;
+    switch (match[1]) {
+      case '>': return actual > expected;
+      case '<': return actual < expected;
+      case '>=': return actual >= expected;
+      case '<=': return actual <= expected;
+      case '=': return actual === expected;
+      case '<>': return actual !== expected;
+      default: return false;
     }
   }
 
-  private applyColorScale(cellEl: HTMLElement, cell: ParsedCell, cs: CfColorScale): void {
+  private applyColorScale(cellEl: HTMLElement, cell: ParsedCell, cs: CfColorScale, rangeValues: number[]): void {
     const val = cell.value;
     if (typeof val !== 'number') return;
 
+    if (rangeValues.length === 0) return;
     const thresholds = cs.cfvo.map(v => {
-      if (v.type === 'min') return -Infinity;
-      if (v.type === 'max') return Infinity;
+      if (v.type === 'min') return rangeValues[0];
+      if (v.type === 'max') return rangeValues[rangeValues.length - 1];
       if (v.type === 'num') return Number(v.value ?? 0);
-      if (v.type === 'percent') return Number(v.value ?? 50);
-      if (v.type === 'percentile') return Number(v.value ?? 50);
+      if (v.type === 'percent') return rangeValues[0] + (rangeValues[rangeValues.length - 1] - rangeValues[0]) * Number(v.value ?? 50) / 100;
+      if (v.type === 'percentile') return rangeValues[Math.round((rangeValues.length - 1) * Number(v.value ?? 50) / 100)];
       return Number(v.value ?? 0);
     });
 
@@ -502,7 +510,7 @@ export class TableRenderer {
     if (thresholds.length >= 2 && colors.length >= 2) {
       const min = thresholds[0];
       const max = thresholds[thresholds.length - 1];
-      const ratio = Math.max(0, Math.min(1, (val - min) / (max - min)));
+      const ratio = max === min ? 0 : Math.max(0, Math.min(1, (val - min) / (max - min)));
 
       if (thresholds.length === 2 || colors.length === 2) {
         cellEl.style.backgroundColor = this.lerpColor(colors[0], colors[1], ratio);
@@ -517,13 +525,23 @@ export class TableRenderer {
     }
   }
 
-  private applyDataBar(cellEl: HTMLElement, cell: ParsedCell, db: CfDataBar): void {
+  private applyDataBar(cellEl: HTMLElement, cell: ParsedCell, db: CfDataBar, rangeValues: number[]): void {
     const val = cell.value;
     if (typeof val !== 'number') return;
 
-    const min = db.cfvo.some(v => v.type === 'min') ? -Infinity : Number(db.cfvo[0]?.value ?? 0);
-    const max = db.cfvo.some(v => v.type === 'max') ? Infinity : Number(db.cfvo[1]?.value ?? 100);
-    const ratio = Math.max(0, Math.min(1, (val - min) / (max - min)));
+    if (rangeValues.length === 0) return;
+    const resolve = (index: number, fallback: number): number => {
+      const threshold = db.cfvo[index];
+      if (!threshold) return fallback;
+      if (threshold.type === 'min') return rangeValues[0];
+      if (threshold.type === 'max') return rangeValues[rangeValues.length - 1];
+      if (threshold.type === 'percent') return rangeValues[0] + (rangeValues[rangeValues.length - 1] - rangeValues[0]) * Number(threshold.value ?? 0) / 100;
+      if (threshold.type === 'percentile') return rangeValues[Math.round((rangeValues.length - 1) * Number(threshold.value ?? 0) / 100)];
+      return Number(threshold.value ?? fallback);
+    };
+    const min = resolve(0, rangeValues[0]);
+    const max = resolve(1, rangeValues[rangeValues.length - 1]);
+    const ratio = max === min ? 0 : Math.max(0, Math.min(1, (val - min) / (max - min)));
 
     cellEl.style.background = `linear-gradient(to right, ${db.color}36 0%, ${db.color}36 ${ratio * 100}%, transparent ${ratio * 100}%)`;
   }
@@ -580,40 +598,13 @@ export class TableRenderer {
     });
 
     if (this.selectedMode === 'cell' && this.selectedRow >= 0 && this.selectedCol >= 0) {
-      const rows = table.querySelectorAll('tr');
-      const rowIndex = this.selectedRow + 1;
-      if (rowIndex < rows.length) {
-        const cells = rows[rowIndex].querySelectorAll<HTMLElement>('th, td');
-        const colIndex = this.selectedCol + 1;
-        if (colIndex < cells.length) {
-          cells[colIndex].classList.add('excel-selected-cell');
-        }
-        // highlight row number
-        cells[0]?.classList.add('excel-selected-row');
-        // highlight column header
-        const headerCells = rows[0].querySelectorAll<HTMLElement>('th, td');
-        if (colIndex < headerCells.length) {
-          headerCells[colIndex].classList.add('excel-selected-col');
-        }
-      }
+      table.querySelector<HTMLElement>(`td[data-row="${this.selectedRow}"][data-col="${this.selectedCol}"]`)?.classList.add('excel-selected-cell');
+      table.querySelector<HTMLElement>(`th[data-row="${this.selectedRow}"]`)?.classList.add('excel-selected-row');
+      table.querySelector<HTMLElement>(`th[data-col="${this.selectedCol}"]`)?.classList.add('excel-selected-col');
     } else if (this.selectedMode === 'row' && this.selectedRow >= 0) {
-      const rows = table.querySelectorAll('tr');
-      const rowIndex = this.selectedRow + 1;
-      if (rowIndex < rows.length) {
-        const cells = rows[rowIndex].querySelectorAll<HTMLElement>('th, td');
-        for (const cell of cells) {
-          cell.classList.add('excel-selected-row');
-        }
-      }
+      table.querySelectorAll<HTMLElement>(`th[data-row="${this.selectedRow}"], td[data-row="${this.selectedRow}"]`).forEach(cell => cell.classList.add('excel-selected-row'));
     } else if (this.selectedMode === 'col' && this.selectedCol >= 0) {
-      const colIndex = this.selectedCol + 1;
-      const rows = table.querySelectorAll('tr');
-      for (const row of rows) {
-        const cells = row.querySelectorAll<HTMLElement>('th, td');
-        if (colIndex < cells.length) {
-          cells[colIndex].classList.add('excel-selected-col');
-        }
-      }
+      table.querySelectorAll<HTMLElement>(`th[data-col="${this.selectedCol}"], td[data-col="${this.selectedCol}"]`).forEach(cell => cell.classList.add('excel-selected-col'));
     } else if (this.selectedMode === 'all') {
       table.querySelectorAll('td').forEach(el => el.classList.add('excel-selected-cell'));
     }

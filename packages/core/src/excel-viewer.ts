@@ -24,6 +24,7 @@ export class ExcelViewer {
   private allImages: any[] = [];
   private fileData: ArrayBuffer | null = null;
   private isDestroyed = false;
+  private renderVersion = 0;
 
   constructor(options: ExcelViewerOptions = {}) {
     this.options = {
@@ -65,6 +66,7 @@ export class ExcelViewer {
       throw new Error('[ExcelViewer] Call mount() first or pass target in constructor.');
     }
 
+    const renderVersion = ++this.renderVersion;
     this.showLoading();
     this.hideError();
 
@@ -73,22 +75,28 @@ export class ExcelViewer {
     this.imageRenderer?.clearAll();
 
     try {
-      this.fileData = await loadData(source as any);
-      this.workbook = await parseExcel(this.fileData);
+      const fileData = await loadData(source as any);
+      if (this.isDestroyed || renderVersion !== this.renderVersion) return;
+      this.fileData = fileData;
+      this.workbook = await parseExcel(fileData);
+      if (this.isDestroyed || renderVersion !== this.renderVersion) return;
 
       if (!this.workbook || this.workbook.sheets.length === 0) {
         throw new Error('[ExcelViewer] No readable worksheets found.');
       }
 
       const rawWb = new (await import('exceljs')).Workbook();
-      await rawWb.xlsx.load(this.fileData);
-      const { charts, images } = await parseCharts(this.fileData, rawWb);
+      if (this.isDestroyed || renderVersion !== this.renderVersion) return;
+      await rawWb.xlsx.load(fileData);
+      const { charts, images } = await parseCharts(fileData, rawWb);
+      if (this.isDestroyed || renderVersion !== this.renderVersion) return;
       this.allCharts = charts;
       this.allImages = images;
 
       // 解析数据透视表
       try {
-        const pivotTables = await parsePivotTables(this.fileData);
+        const pivotTables = await parsePivotTables(fileData);
+        if (this.isDestroyed || renderVersion !== this.renderVersion) return;
         if (pivotTables.length > 0) {
           this.workbook.pivotTables = pivotTables;
         }
@@ -167,9 +175,11 @@ export class ExcelViewer {
         this.renderCurrentSheetImages();
       }
 
+      if (this.isDestroyed || renderVersion !== this.renderVersion) return;
       this.hideLoading();
       this.options.onRendered?.();
     } catch (err: any) {
+      if (this.isDestroyed || renderVersion !== this.renderVersion) return;
       this.hideLoading();
       this.showError(err.message || 'Render failed');
       this.options.onError?.(err);
@@ -191,6 +201,7 @@ export class ExcelViewer {
 
   destroy(): void {
     this.isDestroyed = true;
+    this.renderVersion++;
     this.chartRenderer?.destroy();
     this.imageRenderer?.destroy();
     this.chartRenderer = null;
@@ -269,7 +280,13 @@ export class ExcelViewer {
   private hideLoading(): void { if (this.loadingEl) this.loadingEl.style.display = 'none'; }
   private showError(msg: string): void {
     if (this.errorEl) {
-      this.errorEl.innerHTML = `<div style="font-weight:bold;margin-bottom:8px">Render Error</div><div>${msg}</div>`;
+      this.errorEl.replaceChildren();
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:bold;margin-bottom:8px';
+      title.textContent = 'Render Error';
+      const detail = document.createElement('div');
+      detail.textContent = msg;
+      this.errorEl.append(title, detail);
       this.errorEl.style.display = 'flex';
     }
   }

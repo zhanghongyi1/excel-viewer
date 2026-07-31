@@ -1,1 +1,21 @@
-{"name":"excel-preview-monorepo","private":true,"version":"0.1.0","description":"Excel preview & chart render - pure JS, framework-agnostic","scripts":{"build":"pnpm --filter @excel-preview/core build","dev":"pnpm --filter playground dev","lint":"eslint .","clean":"rm -rf packages/core/dist playground/dist"},"devDependencies":{"typescript":"^5.3.3","tsup":"^8.0.2"},"engines":{"node":">=18.0.0","pnpm":">=8.0.0"},"packageManager":"pnpm@8.15.0"}
+{
+    "name": "excel-preview-monorepo",
+    "private": true,
+    "version": "0.1.0",
+    "description": "Excel preview & chart render - pure JS, framework-agnostic",
+    "scripts": {
+        "build": "pnpm --filter @excel-preview/core build",
+        "dev": "pnpm --filter playground dev",
+        "lint": "eslint .",
+        "clean": "rm -rf packages/core/dist playground/dist"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.3",
+        "tsup": "^8.0.2"
+    },
+    "engines": {
+        "node": ">=18.0.0",
+        "pnpm": ">=8.0.0"
+    },
+    "packageManager": "pnpm@8.15.0"
+}
