@@ -1,3 +1,6 @@
+import type { ChartType } from '../chart/chart-model';
+export type { ChartType } from '../chart/chart-model';
+
 // ===== 数据源类型 =====
 
 /** 支持的数据源类型 */
@@ -154,25 +157,9 @@ export interface ParsedSheet {
   conditionalFormatting?: ConditionalFormatting[];
   hiddenRows?: Set<number>;
   hiddenCols?: Set<number>;
-  /** 图表列表（由 chart-parser 填充，类型为 ChartModel[]，此处用 any 避免循环依赖） */
-  charts: any[];
 }
 
 // ===== 图表类型 =====
-
-/** 支持的图表类型（完整列表，与 ChartModel.ChartType 一致） */
-export type ChartType =
-  | 'bar'
-  | 'line'
-  | 'area'
-  | 'pie'
-  | 'doughnut'
-  | 'scatter'
-  | 'bubble'
-  | 'radar'
-  | 'stock'
-  | 'surface'
-  | 'combo';
 
 /** 图表锚点定位（基于单元格坐标） */
 export interface ChartAnchor {
@@ -275,20 +262,23 @@ export interface ViewerOptions {
   /** 最小行数 */
   minRowLength?: number;
   /** 是否显示右键菜单 */
+  /** @deprecated 当前为只读预览器，不提供右键菜单。 */
   showContextmenu?: boolean;
+  /** 是否显示底部 Sheet 切换栏 */
+  showToolbar?: boolean;
   /**
    * 注入 echarts 实例（用于按需引入减小包体积）
    * 示例: import * as echarts from 'echarts/core' + 注册组件
-   * 如果不传入，则使用自研 Canvas 渲染引擎
+   * 如果不传入，则在实际需要图表时动态加载 ECharts
    */
   echarts?: any;
   /** 图表渲染后端: 'echarts' | 'canvas' | 'auto'（默认 echarts） */
   chartBackend?: 'echarts' | 'canvas' | 'auto';
   /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
   echartsRenderer?: 'svg' | 'canvas';
-  /** 数据预处理钩子（在 exceljs 解析后、渲染前调用） */
+  /** @deprecated 尚未实现，请在调用 render 前预处理数据。 */
   beforeTransformData?: (workbook: any) => any;
-  /** 数据转换钩子（在转换为渲染数据时调用） */
+  /** @deprecated 尚未实现，请使用 parseExcel 后自行转换。 */
   transformData?: (data: any) => any;
 }
 
@@ -309,7 +299,9 @@ export interface ExcelViewerOptions {
   height?: string;
   /** 是否显示底部 Sheet 切换栏 */
   showToolbar?: boolean;
-  /** ECharts 实例（注入式按需加载，不传则使用 Canvas 渲染） */
+  /** 是否解析数据透视表缓存（默认 false，解析大文件会增加开销） */
+  parsePivotTables?: boolean;
+  /** ECharts 实例（可注入按需构建，不传则由核心包动态加载） */
   echarts?: any;
   /** 图表渲染后端（默认 echarts） */
   chartBackend?: 'echarts' | 'canvas' | 'auto';

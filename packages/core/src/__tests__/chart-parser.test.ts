@@ -15,6 +15,7 @@ import { parseChartXmlToModel } from '../chart/ooxml-chart-parser';
 import { parseThemeXml, DEFAULT_THEME } from '../chart/theme-parser';
 import { computeLayout } from '../chart/layout-engine';
 import { convertToEChartsOption } from '../chart/echarts-converter';
+import { parseExcel } from '../parser/excel-parser';
 import type { ChartModel } from '../chart/chart-model';
 import type { ChartAnchor } from '../types';
 
@@ -130,6 +131,41 @@ describe('Chart Parser — Theme Parser', () => {
     expect(theme.colors.lt1).toBe('#FFFFFF');
     expect(theme.fonts.majorFont).toBe('Cambria');
     expect(theme.fonts.minorFont).toBe('Calibri');
+  });
+});
+
+describe('Excel Parser — formula calculation', () => {
+  it('calculates formulas and cross-sheet references for read-only preview', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const source = workbook.addWorksheet('Source');
+    const summary = workbook.addWorksheet('Summary');
+    source.getCell('A1').value = 2;
+    source.getCell('A2').value = 3;
+    source.getCell('A3').value = { formula: 'SUM(A1:A2)' };
+    summary.getCell('A1').value = { formula: "Source!A3*2" };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const parsed = await parseExcel(buffer);
+
+    expect(parsed.sheets[0].rows[2][0]).toMatchObject({ value: 5, text: '5', type: 'formula' });
+    expect(parsed.sheets[1].rows[0][0]).toMatchObject({ value: 10, text: '10', type: 'formula' });
+  });
+
+  it('shows Excel-compatible error for unsupported formulas', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    const cell = sheet.getCell('A1');
+    cell.value = { formula: 'UNSUPPORTED_FUNCTION(1)' };
+    cell.numFmt = '0.00';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const parsed = await parseExcel(buffer);
+
+    expect(parsed.sheets[0].rows[0][0]).toMatchObject({
+      value: '#NAME?',
+      text: '#NAME?',
+      type: 'formula',
+    });
   });
 });
 

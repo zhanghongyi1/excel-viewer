@@ -1,4 +1,3 @@
-import * as echarts from 'echarts';
 import type { ExcelSource, ExcelViewerOptions, ParsedWorkbook, ParsedSheet } from './types';
 import type { ChartModel } from './chart/chart-model';
 import { loadData } from './loader';
@@ -31,12 +30,11 @@ export class ExcelViewer {
       width: '100%',
       height: '100%',
       showToolbar: true,
-      // 默认使用 ECharts 渲染图表（本地 npm 包，完全离线）
+      parsePivotTables: false,
+      // ECharts 是默认主渲染后端，仅在明确指定 canvas 时切换。
       chartBackend: 'echarts',
       // 默认使用 SVG 渲染
       echartsRenderer: 'svg',
-      // 默认注入 echarts 实例
-      echarts,
       ...options,
     };
 
@@ -93,22 +91,28 @@ export class ExcelViewer {
       this.allCharts = charts;
       this.allImages = images;
 
-      // 解析数据透视表
-      try {
-        const pivotTables = await parsePivotTables(fileData);
+      if (this.allCharts.length > 0 && this.options.chartBackend !== 'canvas' && !this.options.echarts) {
+        this.options.echarts = await import('echarts');
         if (this.isDestroyed || renderVersion !== this.renderVersion) return;
-        if (pivotTables.length > 0) {
-          this.workbook.pivotTables = pivotTables;
+      }
+
+      if (this.options.parsePivotTables) {
+        try {
+          const pivotTables = await parsePivotTables(fileData);
+          if (this.isDestroyed || renderVersion !== this.renderVersion) return;
+          if (pivotTables.length > 0) {
+            this.workbook.pivotTables = pivotTables;
+          }
+        } catch {
+          // 数据透视表不影响基础预览
         }
-      } catch {
-        // ignore pivot table parse errors
       }
 
       if (!this.tableRenderer) {
         this.tableRenderer = new TableRenderer();
         this.tableRenderer.init({
           container: this.wrapperEl!,
-          options: { echarts: this.options.echarts },
+          options: { echarts: this.options.echarts, showToolbar: this.options.showToolbar },
         });
         this.tableRenderer.onSwitchSheet((idx) => {
           // 切换 sheet 时先清除旧图表和图片引用

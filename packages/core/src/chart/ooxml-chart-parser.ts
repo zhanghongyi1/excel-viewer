@@ -49,6 +49,7 @@ import {
 } from './chart-model';
 import { DEFAULT_THEME, themeColorsToMap } from './theme-parser';
 import type { ChartTheme } from './theme-parser';
+import { colLetterToNumber, getOoxmlNumber as getNum, toArray } from '../utils/ooxml';
 
 // ===== OOXML 图表类型元素映射 =====
 
@@ -74,6 +75,9 @@ const CHART_ELEMENT_MAP: ChartElementInfo[] = [
   { ooxmlKey: 'c:stockChart', chartType: 'stock', is3D: false },
   { ooxmlKey: 'c:surfaceChart', chartType: 'surface', is3D: false },
   { ooxmlKey: 'c:surface3DChart', chartType: 'surface', is3D: true },
+  // 兼容部分生成器将新式图表写回 classic chartSpace 的情况。
+  { ooxmlKey: 'c:waterfallChart', chartType: 'waterfall', is3D: false },
+  { ooxmlKey: 'c:funnelChart', chartType: 'funnel', is3D: false },
 ];
 
 /** 主题颜色映射 (默认 Office 主题，可被 parseChartXmlToModel 的 theme 参数覆盖) */
@@ -90,25 +94,6 @@ const DEFAULT_SERIES_COLORS = [
   '#4472C4', '#70AD47', '#264478', '#9B59B6',
 ];
 
-// ===== XML 工具函数 =====
-
-/** 安全获取数值 */
-function getNum(val: any): number {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') return parseFloat(val) || 0;
-  if (typeof val === 'object') {
-    if (val['#text'] !== undefined) return parseFloat(val['#text']) || 0;
-  }
-  return 0;
-}
-
-/** 获取数组形式节点（兼容单值） */
-function toArray(val: any): any[] {
-  if (val === undefined || val === null) return [];
-  return Array.isArray(val) ? val : [val];
-}
-
 /** 提取文本节点值 */
 function extractText(node: any): string {
   if (node === undefined || node === null) return '';
@@ -122,15 +107,6 @@ function extractText(node: any): string {
 /** 获取 plotArea 节点 */
 function getPlotArea(chartXmlObj: any): any {
   return chartXmlObj?.['c:chartSpace']?.['c:chart']?.['c:plotArea'];
-}
-
-/** 列字母转数字索引 (A=0) */
-function colLetterToNumber(letters: string): number {
-  let result = 0;
-  for (let i = 0; i < letters.length; i++) {
-    result = result * 26 + (letters.charCodeAt(i) - 64);
-  }
-  return result - 1;
 }
 
 /** 解析单元格范围引用 */
@@ -570,6 +546,13 @@ function parseSeries(
       series.data = readNumRef(valNode, workbook);
       break;
     }
+
+    case 'waterfall':
+    case 'funnel': {
+      const valNode = toArray(serNode['c:val'])[0];
+      series.data = readNumRef(valNode, workbook);
+      break;
+    }
   }
 
   // 线条样式
@@ -771,13 +754,13 @@ function parseLegend(chartXmlObj: any): ChartLegendModel | undefined {
 
 /** 解析柱状图方向 */
 function parseBarDirection(chartNode: any): BarDirection {
-  const dir = chartNode?.['@_barDir'];
+  const dir = chartNode?.['@_barDir'] ?? toArray(chartNode?.['c:barDir'])?.[0]?.['@_val'];
   return dir === 'bar' ? 'bar' : 'col';
 }
 
 /** 解析分组方式 */
 function parseGrouping(chartNode: any): Grouping {
-  const g = chartNode?.['@_grouping'] || chartNode?.['c:grouping']?.[0]?.['@_val'];
+  const g = chartNode?.['@_grouping'] ?? toArray(chartNode?.['c:grouping'])?.[0]?.['@_val'];
   if (g === 'stacked') return 'stacked';
   if (g === 'percentStacked') return 'percentStacked';
   if (g === 'standard') return 'standard';
@@ -786,7 +769,7 @@ function parseGrouping(chartNode: any): Grouping {
 
 /** 解析 gapWidth */
 function parseGapWidth(chartNode: any): number | undefined {
-  const gap = chartNode?.['c:gapWidth']?.[0]?.['@_val'];
+  const gap = toArray(chartNode?.['c:gapWidth'])?.[0]?.['@_val'];
   return gap !== undefined ? getNum(gap) : undefined;
 }
 
@@ -883,6 +866,9 @@ export function parseChartXmlToModel(
       if (barDirection === undefined) barDirection = parseBarDirection(node);
       if (grouping === undefined) grouping = parseGrouping(node);
       if (gapWidth === undefined) gapWidth = parseGapWidth(node);
+    }
+    if (info.chartType === 'area' && grouping === undefined) {
+      grouping = parseGrouping(node);
     }
     if (info.chartType === 'radar') {
       if (radarStyle === undefined) radarStyle = parseRadarStyle(node);

@@ -1,4 +1,5 @@
-import type { ParsedWorkbook, ParsedSheet, ParsedCell, ParsedPivotTable, PivotCacheRecord, ViewerOptions, CellStyle, ConditionalFormatting, CfRule, CfColorScale, CfDataBar, RichTextRun } from '../types';
+import type { ParsedWorkbook, ParsedSheet, ParsedCell, ParsedPivotTable, PivotCacheRecord, ViewerOptions, CellStyle, CfRule, CfColorScale, CfDataBar } from '../types';
+import { colLetterToNumber } from '../utils/ooxml';
 
 const DEFAULT_COL_WIDTH = 80;
 const DEFAULT_ROW_HEIGHT = 20; // Excel 默认行高更紧凑
@@ -65,7 +66,7 @@ export class TableRenderer {
     startSize: number;
   } | null = null;
 
-  // 数据透视表
+  // 数据透视表 UI 将在后续主版本清理，当前保留公开方法兼容性。
   private pivotTableMode = false;
   private pivotTableEl: HTMLDivElement | null = null;
 
@@ -119,6 +120,8 @@ export class TableRenderer {
   init(config: TableRendererConfig): void {
     this.container = config.container;
     this.options = config.options || {};
+    this.minColCount = this.options.minColLength || 0;
+    this.minRowCount = this.options.minRowLength || 0;
     if (!this.container) throw new Error('[TableRenderer] Container element is required');
     this.createDOM();
   }
@@ -138,7 +141,7 @@ export class TableRenderer {
     this.sheetBar.style.cssText = 'display:flex;background:#f0f0f0;border-top:1px solid #c0c0c0;overflow-x:auto;';
 
     this.rootEl.appendChild(this.scrollEl);
-    this.rootEl.appendChild(this.sheetBar);
+    if (this.options.showToolbar !== false) this.rootEl.appendChild(this.sheetBar);
     this.container.appendChild(this.rootEl);
 
     // 注入选中高亮样式
@@ -391,19 +394,11 @@ export class TableRenderer {
     if (!match) {
       return { startRow: 0, startCol: 0, endRow: sheet.rows.length - 1, endCol: 10 };
     }
-    const startCol = this.colLetterToNum(match[1]);
+    const startCol = colLetterToNumber(match[1]);
     const startRow = parseInt(match[2], 10) - 1;
-    const endCol = this.colLetterToNum(match[3]);
+    const endCol = colLetterToNumber(match[3]);
     const endRow = parseInt(match[4], 10) - 1;
     return { startRow, startCol, endRow, endCol };
-  }
-
-  private colLetterToNum(letters: string): number {
-    let result = 0;
-    for (let i = 0; i < letters.length; i++) {
-      result = result * 26 + (letters.charCodeAt(i) - 64);
-    }
-    return result - 1;
   }
 
   private getParsedCell(sheet: ParsedSheet, row: number, col: number): ParsedCell | undefined {
@@ -678,15 +673,6 @@ export class TableRenderer {
     if (!sheetBar || !this.workbookData) return;
     sheetBar.innerHTML = '';
 
-    const btnArea = document.createElement('div');
-    btnArea.style.cssText = 'display:flex;align-items:center;padding:0 4px;gap:2px;border-right:1px solid #c0c0c0;';
-    const addBtn = document.createElement('div');
-    addBtn.textContent = '+';
-    addBtn.style.cssText = 'padding:2px 8px;cursor:pointer;font-size:16px;color:#555;user-select:none;border-radius:2px;';
-    addBtn.addEventListener('click', () => {});
-    btnArea.appendChild(addBtn);
-    sheetBar.appendChild(btnArea);
-
     const tabsWrap = document.createElement('div');
     tabsWrap.style.cssText = 'display:flex;flex:1;overflow:hidden;';
     sheetBar.appendChild(tabsWrap);
@@ -779,21 +765,6 @@ export class TableRenderer {
     return { left, top, width, height };
   }
 
-  getChartArea(anchor: import('../types').ChartAnchor): { left: number; top: number; width: number; height: number } {
-    const startPos = this.getCellPosition(anchor.fromCol, anchor.fromRow);
-    const endPos = this.getCellPosition(anchor.toCol, anchor.toRow);
-    const left = startPos.left + anchor.fromColOff / 9525;
-    const top = startPos.top + anchor.fromRowOff / 9525;
-    const right = endPos.left + anchor.toColOff / 9525;
-    const bottom = endPos.top + anchor.toRowOff / 9525;
-    return {
-      left,
-      top,
-      width: right - left,
-      height: bottom - top,
-    };
-  }
-
   onSwitchSheet(callback: (index: number) => void): void {
     this.onSwitchSheetCallback = callback;
   }
@@ -801,8 +772,6 @@ export class TableRenderer {
   onCellSelected(callback: (cell: any, rowIndex: number, colIndex: number) => void): void {
     this.onCellSelectedCallback = callback;
   }
-
-  reRender(): void {}
 
   // ===== 列宽/行高拖拽调整 =====
 

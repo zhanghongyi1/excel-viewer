@@ -31,6 +31,8 @@ export type ChartType =
   | 'radar' // 雷达图
   | 'stock' // 股价图（K线 / OHLC）
   | 'surface' // 曲面图（降级为等高线/热力图渲染）
+  | 'waterfall' // 瀑布图
+  | 'funnel' // 漏斗图
   | 'combo'; // 组合图（多类型混合 + 双坐标轴）
 
 /** 柱状图方向: col=垂直柱状, bar=水平条形 */

@@ -18,7 +18,7 @@ import type { ChartModel } from '../chart/chart-model';
 import { computeLayout } from '../chart/layout-engine';
 import { convertToEChartsOption } from '../chart/echarts-converter';
 import { CanvasChartRenderer } from '../chart/canvas-chart-renderer';
-import { SVGRenderer } from 'echarts/renderers';
+import { EMU_PER_PIXEL } from '../utils/ooxml';
 
 /** 像素区域 */
 interface Rect {
@@ -201,9 +201,6 @@ export class ChartRenderer {
       this.container.appendChild(containerEl);
       this.chartContainers.set(chart.id, containerEl);
 
-      // 注册 SVG 渲染器（自定义 echarts/core 注入时也需要）
-      try { this.echartsLib.use?.([SVGRenderer]); } catch { /* ignore */ }
-
       const instance = this.echartsLib.init(containerEl, null, { renderer: this.renderer });
       this.echartsInstances.set(chart.id, instance);
     }
@@ -262,10 +259,10 @@ export class ChartRenderer {
     if (this.positionFn) {
       const startPos = this.positionFn(anchor.fromCol, anchor.fromRow);
       const endPos = this.positionFn(anchor.toCol, anchor.toRow);
-      const left = startPos.left + anchor.fromColOff / 9525;
-      const top = startPos.top + anchor.fromRowOff / 9525;
-      const right = endPos.left + anchor.toColOff / 9525;
-      const bottom = endPos.top + anchor.toRowOff / 9525;
+      const left = startPos.left + anchor.fromColOff / EMU_PER_PIXEL;
+      const top = startPos.top + anchor.fromRowOff / EMU_PER_PIXEL;
+      const right = endPos.left + anchor.toColOff / EMU_PER_PIXEL;
+      const bottom = endPos.top + anchor.toRowOff / EMU_PER_PIXEL;
       return {
         left: Math.round(left),
         top: Math.round(top),

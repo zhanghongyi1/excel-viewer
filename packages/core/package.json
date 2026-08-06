@@ -25,15 +25,13 @@
         "test:update": "vitest run -u"
     },
     "dependencies": {
-        "dayjs": "^1.11.10",
         "echarts": "^5.4.3",
         "exceljs": "^4.4.0",
         "fast-xml-parser": "^4.3.4",
+        "hyperformula": "^3.3.0",
         "jszip": "^3.10.1"
     },
     "devDependencies": {
-        "@types/google.visualization": "^0.0.74",
-        "@types/jszip": "^3.4.0",
         "tsup": "^8.0.2",
         "typescript": "^5.3.3",
         "vitest": "^4.1.10"

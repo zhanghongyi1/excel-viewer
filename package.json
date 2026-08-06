@@ -6,7 +6,6 @@
     "scripts": {
         "build": "pnpm --filter @excel-preview/core build",
         "dev": "pnpm --filter playground dev",
-        "lint": "eslint .",
         "clean": "rm -rf packages/core/dist playground/dist"
     },
     "devDependencies": {

@@ -9,7 +9,9 @@
  */
 
 import ExcelJS from 'exceljs';
-import dayjs from 'dayjs';
+import { colLetterToNumber } from '../utils/ooxml';
+import { HyperFormula, DetailedCellError } from 'hyperformula';
+import type { RawCellContent } from 'hyperformula';
 import type {
   ParsedWorkbook,
   ParsedSheet,
@@ -257,6 +259,228 @@ function normalizeCellValue(cell: ExcelJS.Cell): any {
   return v;
 }
 
+type FormulaCalculator = {
+  getValue: (sheetName: string, row: number, column: number) => any;
+  dispose: () => void;
+};
+
+function getFormula(cell: ExcelJS.Cell): string | undefined {
+  if (cell.type !== ExcelJS.ValueType.Formula) return undefined;
+
+  const value = cell.value;
+  if (typeof value === 'object' && value !== null && 'formula' in value) {
+    return String((value as { formula: string }).formula);
+  }
+
+  const formula = (cell as any).formula;
+  return typeof formula === 'string' ? formula : undefined;
+}
+
+/** Excel 序列号与 Unix 纪元(1970-01-01)之间的天数差 (基于 1899-12-30, 兼容 Excel 1900 闰年 bug) */
+const EXCEL_EPOCH_OFFSET_DAYS = 25569;
+
+/**
+ * 检测 Excel 数字格式是否为日期/时间格式
+ * 通过识别 y/m/d/h/s 及 [h]/[m]/[s] 等时间令牌判断，
+ * 忽略引号包裹的文本，避免 "#,##0.00"、"0 \"kg\"" 等误判
+ */
+function isDateFormat(numFmt: string | undefined): boolean {
+  if (!numFmt) return false;
+  const stripped = numFmt.replace(/"[^"]*"/g, '');
+  return /(^|[^a-z])(y{1,4}|m{1,2}|d{1,2}|h{1,2}|s{1,2}|\[h\]|\[m\]|\[s\])([^a-z]|$)/i.test(stripped);
+}
+
+/** Excel 日期序列号转 JS Date */
+function excelSerialToDate(serial: number): Date {
+  return new Date(Math.round((serial - EXCEL_EPOCH_OFFSET_DAYS) * 86400000));
+}
+
+/**
+ * 以「文本」语义写入 HyperFormula, 匹配 Excel 的文本处理规则:
+ * - 加单引号前缀强制所有字符串视为文本(否则 "41128.367" 会被自动转为数字、"TRUE" 转为布尔)
+ * - 空字符串写成 "''", 使 HyperFormula 存为非数值文本; 若只写单个 "'" 会被剥掉存为空串,
+ *   参与除法等算术时被强转为 0 (0/0 → #DIV/0!), 与 Excel 的 #VALUE! 不一致
+ */
+function toTextContent(text: string): string {
+  return text.length === 0 ? "''" : `'${text}`;
+}
+
+/**
+ * 将 exceljs 单元格值归一化为 HyperFormula 可接受的原始内容
+ * (公式/字符串/数字/布尔/日期/错误, 对象类型需提取纯文本)
+ */
+function toRawCellContent(cell: ExcelJS.Cell): RawCellContent {
+  if (cell.type === ExcelJS.ValueType.Formula) {
+    const formula = getFormula(cell);
+    return formula ? `=${formula}` : null;
+  }
+
+  const value = cell.value;
+  if (value === null || value === undefined) return null;
+
+  if (cell.type === ExcelJS.ValueType.RichText) {
+    const richText = value as any;
+    const text = richText.text ?? richText.richText?.map((r: any) => r.text).join('') ?? '';
+    return toTextContent(text);
+  }
+
+  if (cell.type === ExcelJS.ValueType.Hyperlink) {
+    const hyperlink = value as ExcelJS.CellHyperlinkValue;
+    const text = hyperlink.text ?? hyperlink.hyperlink ?? '';
+    return toTextContent(text);
+  }
+
+  if (cell.type === ExcelJS.ValueType.Error) {
+    return (value as { error?: string })?.error ?? String(value);
+  }
+
+  if (value instanceof Date) return value;
+
+  if (typeof value === 'object') {
+    const error = (value as { error?: string }).error;
+    return typeof error === 'string' ? error : null;
+  }
+
+  return typeof value === 'string' ? toTextContent(value) : (value as number | boolean);
+}
+
+function createFormulaCalculator(workbook: ExcelJS.Workbook): FormulaCalculator | undefined {
+  try {
+    const hf = HyperFormula.buildEmpty({
+      licenseKey: 'gpl-v3',
+      maxRows: 1_048_576,
+      maxColumns: 16_384,
+    });
+    const sheetIdMap = new Map<string, number>();
+
+    for (const worksheet of workbook.worksheets) {
+      let sheetId: number;
+      try {
+        hf.addSheet(worksheet.name);
+        const id = hf.getSheetId(worksheet.name);
+        if (id === undefined) {
+          console.warn(`[excel-preview] Skip sheet "${worksheet.name}" for formula engine: unknown id`);
+          continue;
+        }
+        sheetId = id;
+      } catch (error) {
+        console.warn(`[excel-preview] Skip sheet "${worksheet.name}" for formula engine:`, error);
+        continue;
+      }
+      sheetIdMap.set(worksheet.name, sheetId);
+
+      // 按行批量写入, 降低逐单元格调用开销
+      worksheet.eachRow((row, rowNumber) => {
+        const cells: RawCellContent[] = [];
+        let maxCol = -1;
+        row.eachCell((cell, colNumber) => {
+          const idx = colNumber - 1;
+          cells[idx] = toRawCellContent(cell);
+          if (idx > maxCol) maxCol = idx;
+        });
+        if (maxCol < 0) return;
+
+        cells.length = maxCol + 1;
+        for (let i = 0; i < cells.length; i++) {
+          if (cells[i] === undefined) cells[i] = null;
+        }
+
+        try {
+          hf.setCellContents({ sheet: sheetId, row: rowNumber - 1, col: 0 }, [cells]);
+        } catch (error) {
+          console.warn(`[excel-preview] Skip row ${rowNumber} of "${worksheet.name}" for formula engine:`, error);
+        }
+      });
+    }
+
+    return {
+      getValue: (sheetName, row, column) => {
+        const sheetId = sheetIdMap.get(sheetName);
+        if (sheetId === undefined) return undefined;
+
+        let value: any;
+        try {
+          value = hf.getCellValue({ sheet: sheetId, row: row - 1, col: column - 1 });
+        } catch {
+          return undefined;
+        }
+
+        if (value instanceof DetailedCellError) return value.value;
+
+        if (typeof value === 'number') {
+          // HyperFormula 日期返回序列号, 依据单元格数字格式还原为 Date
+          const cell = workbook.getWorksheet(sheetName)?.getCell(row, column);
+          if (cell && isDateFormat(cell.style?.numFmt)) {
+            return excelSerialToDate(value);
+          }
+        }
+
+        return value;
+      },
+      dispose: () => undefined,
+    };
+  } catch (error) {
+    console.warn('[excel-preview] Formula calculation unavailable, using cached results:', error);
+    return undefined;
+  }
+}
+
+function getParsedFormulaValue(
+  cell: ExcelJS.Cell,
+  calculator: FormulaCalculator | undefined,
+  sheetName: string,
+  row: number,
+  column: number
+): any {
+  if (!calculator || !getFormula(cell)) return normalizeCellValue(cell);
+  const calculatedValue = calculator.getValue(sheetName, row, column);
+  if (calculatedValue !== undefined) return calculatedValue;
+
+  const cachedValue = normalizeCellValue(cell);
+  if (isUsableFormulaCache(cachedValue, cell.value)) {
+    return cachedValue;
+  }
+
+  return `=${getFormula(cell)}`;
+}
+
+function isUsableFormulaCache(value: any, originalValue: any): boolean {
+  return value !== originalValue
+    && value !== undefined
+    && value !== null
+    && (typeof value !== 'object' || value instanceof Date);
+}
+
+function getParsedFormulaText(
+  cell: ExcelJS.Cell,
+  calculator: FormulaCalculator | undefined,
+  sheetName: string,
+  row: number,
+  column: number
+): string {
+  if (!calculator || !getFormula(cell)) return formatCellText(cell);
+
+  const calculatedValue = calculator.getValue(sheetName, row, column);
+  if (calculatedValue !== undefined) {
+    return formatCellText({
+      ...cell,
+      value: calculatedValue,
+      type: getValueType(calculatedValue),
+    } as ExcelJS.Cell);
+  }
+
+  const cachedValue = normalizeCellValue(cell);
+  if (isUsableFormulaCache(cachedValue, cell.value)) {
+    return formatCellText({
+      ...cell,
+      value: cachedValue,
+      type: getValueType(cachedValue),
+    } as ExcelJS.Cell);
+  }
+
+  return `=${getFormula(cell)}`;
+}
+
 function getCellType(cell: ExcelJS.Cell): CellType {
   switch (cell.type) {
     case ExcelJS.ValueType.Number:
@@ -478,35 +702,26 @@ function formatNumberValue(value: number, cell: ExcelJS.Cell): string {
  */
 function formatDateValue(value: Date, cell: ExcelJS.Cell): string {
   const numFmt = cell.style?.numFmt;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = value.getFullYear();
+  const month = value.getMonth() + 1;
+  const day = value.getDate();
+  const hour = pad(value.getHours());
+  const minute = pad(value.getMinutes());
 
-  // 常见日期格式映射
-  const dateFormats: Record<string, string> = {
-    'yyyy-mm-dd;@': 'YYYY-MM-DD',
-    'mm-dd-yy': 'YYYY/MM/DD',
-    '[$-F800]dddd, mmmm dd, yyyy': 'YYYY年M月D日 ddd',
-    'm"月"d"日";@': 'M月D日',
-    'yyyy/m/d h:mm;@': 'YYYY/M/DD HH:mm',
-    'm/d/yy "h":mm': 'YYYY/MM/DD HH:mm',
-    'h:mm;@': 'HH:mm',
-  };
-
-  if (numFmt && dateFormats[numFmt]) {
-    return dayjs(value).format(dateFormats[numFmt]);
+  switch (numFmt) {
+    case 'mm-dd-yy': return `${year}/${pad(month)}/${pad(day)}`;
+    case '[$-F800]dddd, mmmm dd, yyyy': {
+      const weekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(value);
+      return `${year}年${month}月${day}日 ${weekday}`;
+    }
+    case 'm"月"d"日";@': return `${month}月${day}日`;
+    case 'yyyy/m/d h:mm;@': return `${year}/${month}/${pad(day)} ${hour}:${minute}`;
+    case 'm/d/yy "h":mm': return `${year}/${pad(month)}/${pad(day)} ${hour}:${minute}`;
+    case 'h:mm;@': return `${hour}:${minute}`;
+    case 'yyyy-mm-dd;@':
+    default: return `${year}-${pad(month)}-${pad(day)}`;
   }
-
-  // 默认日期格式
-  return dayjs(value).format('YYYY-MM-DD');
-}
-
-/**
- * 列字母转数字索引 (A=0, B=1, ..., Z=25, AA=26)
- */
-function colLetterToNumber(letters: string): number {
-  let result = 0;
-  for (let i = 0; i < letters.length; i++) {
-    result = result * 26 + (letters.charCodeAt(i) - 64);
-  }
-  return result - 1; // 转为 0-based
 }
 
 /**
@@ -514,7 +729,8 @@ function colLetterToNumber(letters: string): number {
  */
 function parseSheet(
   worksheet: ExcelJS.Worksheet,
-  sheetIndex: number
+  sheetIndex: number,
+  calculator?: FormulaCalculator
 ): ParsedSheet {
   const rows: ParsedCell[][] = [];
   const merges: MergeInfo[] = [];
@@ -621,8 +837,8 @@ function parseSheet(
       }
 
       const parsedCell: ParsedCell = {
-        value: normalizeCellValue(cell),
-        text: formatCellText(cell),
+        value: getParsedFormulaValue(cell, calculator, worksheet.name, rowNumber, colNumber),
+        text: getParsedFormulaText(cell, calculator, worksheet.name, rowNumber, colNumber),
         type: getCellType(cell),
         style: parseCellStyle(cell),
       };
@@ -794,7 +1010,6 @@ function parseSheet(
     conditionalFormatting,
     hiddenRows: hiddenRows.size > 0 ? hiddenRows : undefined,
     hiddenCols: hiddenCols.size > 0 ? hiddenCols : undefined,
-    charts: [], // 图表由 chart-parser 单独填充
   };
 }
 
@@ -819,15 +1034,20 @@ export async function parseExcel(
     }
 
     const sheets: ParsedSheet[] = [];
+    const calculator = createFormulaCalculator(workbook);
 
-    workbook.worksheets.forEach((worksheet, index) => {
-      // 跳过隐藏的工作表
-      if (worksheet.state === 'hidden' || worksheet.state === 'veryHidden') {
-        return;
-      }
+    try {
+      workbook.worksheets.forEach((worksheet, index) => {
+        // 跳过隐藏的工作表
+        if (worksheet.state === 'hidden' || worksheet.state === 'veryHidden') {
+          return;
+        }
 
-      sheets.push(parseSheet(worksheet, index));
-    });
+        sheets.push(parseSheet(worksheet, index, calculator));
+      });
+    } finally {
+      calculator?.dispose();
+    }
 
     if (sheets.length === 0) {
       throw new Error('没有可见的工作表');

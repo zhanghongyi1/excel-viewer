@@ -15,6 +15,7 @@
 import type { ChartModel, ChartSeriesModel, ChartType } from './chart-model';
 import type { ChartLayout } from './layout-engine';
 import { layoutToGrid } from './layout-engine';
+import { OFFICE_CHART_COLORS } from './palette';
 
 // ===== 类型映射 =====
 
@@ -30,6 +31,8 @@ const SERIES_TYPE_MAP: Record<ChartType, string> = {
   radar: 'radar',
   stock: 'candlestick',
   surface: 'heatmap',
+  waterfall: 'bar',
+  funnel: 'funnel',
   combo: 'bar', // 组合图按系列各自类型处理
 };
 
@@ -46,6 +49,7 @@ export function convertToEChartsOption(model: ChartModel, layout: ChartLayout): 
   const option: Record<string, any> = {
     backgroundColor: '#ffffff',
     animation: false,
+    color: [...OFFICE_CHART_COLORS],
   };
 
   // 1. 标题
@@ -101,9 +105,10 @@ function applyTitle(
 
 function applyTooltip(option: Record<string, any>, model: ChartModel): void {
   const isPie = model.type === 'pie' || model.type === 'doughnut';
+  const isFunnel = model.type === 'funnel';
   const isScatter = model.type === 'scatter' || model.type === 'bubble';
   option.tooltip = {
-    trigger: isPie ? 'item' : isScatter ? 'item' : 'axis',
+    trigger: isPie || isFunnel ? 'item' : isScatter ? 'item' : 'axis',
     axisPointer: { type: 'cross' },
     textStyle: { fontSize: 11 },
   };
@@ -150,6 +155,11 @@ function applyXAxis(
   const categories = model.categories || [];
   const isHorizontalBar = model.barDirection === 'bar';
 
+  if (model.type === 'scatter' || model.type === 'bubble') {
+    option.xAxis = buildValueAxis(model.xAxis, layout, 'x');
+    return;
+  }
+
   if (isHorizontalBar) {
     // 水平条形图: X 轴为数值轴, Y 轴为类目轴
     option.xAxis = buildValueAxis(model.xAxis, layout, 'x');
@@ -160,13 +170,15 @@ function applyXAxis(
     type: 'category',
     data: categories.length > 0 ? categories : generateDefaultCategories(model),
     axisLabel: {
-      fontSize: 9,
+      fontSize: model.xAxis?.labelFontSize || 9,
       interval: 0,
-      rotate: layout.xAxisLabelRotate || 0,
+      rotate: model.xAxis?.labelRotate ?? layout.xAxisLabelRotate ?? 0,
       hideOverlap: true,
     },
     axisLine: { lineStyle: { color: '#ccc' } },
     splitLine: { show: false },
+    inverse: model.xAxis?.inverse || false,
+    show: model.xAxis?.visible !== false,
   };
 }
 
@@ -180,13 +192,19 @@ function applyYAxis(
   if (isHorizontalBar) {
     option.yAxis = {
       type: 'category',
-      data: (model.categories || []).slice().reverse(),
+      data: model.categories || [],
       axisLabel: { fontSize: 9 },
       axisLine: { lineStyle: { color: '#ccc' } },
       splitLine: { show: false },
+      inverse: model.yAxis?.inverse ?? true,
     };
   } else {
     option.yAxis = [buildValueAxis(model.yAxis, layout, 'y')];
+    if (model.grouping === 'percentStacked') {
+      option.yAxis[0].min = 0;
+      option.yAxis[0].max = 100;
+      option.yAxis[0].axisLabel.formatter = '{value}%';
+    }
   }
 
   // 次坐标轴（组合图）
@@ -210,6 +228,12 @@ function buildValueAxis(
   };
   if (axisModel?.min !== undefined) axis.min = axisModel.min;
   if (axisModel?.max !== undefined) axis.max = axisModel.max;
+  if (axisModel?.inverse) axis.inverse = true;
+  if (axisModel?.visible === false) axis.show = false;
+  if (axisModel?.labelRotate !== undefined) axis.axisLabel.rotate = axisModel.labelRotate;
+  if (axisModel?.labelFontSize !== undefined) axis.axisLabel.fontSize = axisModel.labelFontSize;
+  if (axisModel?.splitLine === 'none') axis.splitLine.show = false;
+  else if (axisModel?.splitLine) axis.splitLine.lineStyle.type = axisModel.splitLine;
   if (axisModel?.title) {
     axis.name = axisModel.title;
     axis.nameTextStyle = { fontSize: 10, color: '#666' };
@@ -274,6 +298,10 @@ function applySeries(
 
   for (let i = 0; i < model.series.length; i++) {
     const s = model.series[i];
+    if (s.type === 'waterfall') {
+      series.push(...buildWaterfallSeries(s, i));
+      continue;
+    }
     const echartsSeries = convertSeries(s, model, i);
     if (echartsSeries) series.push(echartsSeries);
   }
@@ -299,7 +327,6 @@ function convertSeries(
   // 坐标轴索引（组合图）
   if (s.yAxisIndex !== undefined) {
     series.yAxisIndex = s.yAxisIndex;
-    series.xAxisIndex = s.yAxisIndex;
   }
 
   // 颜色
@@ -362,7 +389,9 @@ function convertSeries(
   // 按图表类型处理数据
   switch (s.type) {
     case 'bar': {
-      series.data = s.data || [];
+      series.data = model.grouping === 'percentStacked'
+        ? normalizePercentSeries(model, index)
+        : (s.data || []);
       if (s.barWidth !== undefined) series.barWidth = s.barWidth;
       if (model.plotArea?.gapWidth !== undefined) series.barCategoryGap = `${model.plotArea.gapWidth}%`;
       if (model.grouping === 'stacked' || model.grouping === 'percentStacked') {
@@ -383,8 +412,13 @@ function convertSeries(
     }
 
     case 'area': {
-      series.data = s.data || [];
+      series.data = model.grouping === 'percentStacked'
+        ? normalizePercentSeries(model, index)
+        : (s.data || []);
       series.areaStyle = { opacity: s.areaOpacity ?? 0.3 };
+      if (model.grouping === 'stacked' || model.grouping === 'percentStacked') {
+        series.stack = 'area';
+      }
       break;
     }
 
@@ -397,9 +431,65 @@ function convertSeries(
       series.data = pieData.filter((d: any) => d.value > 0);
       series.radius = s.type === 'doughnut' ? ['38%', '68%'] : '65%';
       series.center = ['50%', '52%'];
-      series.label = { formatter: '{b}: {c} ({d}%)', fontSize: 10 };
-      series.labelLine = { length: 8, length2: 8 };
+      if (!s.dataLabels) {
+        series.label = { show: false };
+      } else {
+        series.label = {
+          ...series.label,
+          show: true,
+          formatter: s.dataLabels.showPercent ? '{b}: {d}%' : '{b}: {c}',
+          fontSize: 10,
+        };
+        series.labelLine = { show: true, length: 8, length2: 8 };
+      }
       series.itemStyle = { borderColor: '#fff', borderWidth: 1 };
+      break;
+    }
+
+    case 'waterfall': {
+      const values = s.data || [];
+      const base: number[] = [];
+      const increases: Array<number | string> = [];
+      const decreases: Array<number | string> = [];
+      let cumulative = 0;
+      for (const value of values) {
+        if (value >= 0) {
+          base.push(cumulative);
+          increases.push(value);
+          decreases.push('-');
+        } else {
+          base.push(cumulative + value);
+          increases.push('-');
+          decreases.push(Math.abs(value));
+        }
+        cumulative += value;
+      }
+      return {
+        name: s.name,
+        type: 'bar',
+        data: increases,
+        stack: `waterfall-${index}`,
+        itemStyle: { color: '#70AD47' },
+        emphasis: { focus: 'series' },
+        label: series.label,
+        __waterfallBase: base,
+        __waterfallDecrease: decreases,
+      };
+    }
+
+    case 'funnel': {
+      const cats = model.categories || [];
+      series.data = (s.data || []).map((value, i) => ({
+        name: cats[i] || `${s.name} ${i + 1}`,
+        value,
+      }));
+      series.sort = 'descending';
+      series.left = '10%';
+      series.width = '80%';
+      series.top = 36;
+      series.bottom = 12;
+      series.gap = 2;
+      series.label = series.label || { show: true, position: 'inside', formatter: '{b}: {c}' };
       break;
     }
 
@@ -462,6 +552,40 @@ function convertSeries(
   }
 
   return series;
+}
+
+function normalizePercentSeries(model: ChartModel, seriesIndex: number): number[] {
+  const source = model.series[seriesIndex]?.data || [];
+  return source.map((value, pointIndex) => {
+    const total = model.series.reduce((sum, item) => sum + Math.abs(item.data?.[pointIndex] || 0), 0);
+    return total === 0 ? 0 : value / total * 100;
+  });
+}
+
+function buildWaterfallSeries(s: ChartSeriesModel, index: number): Record<string, any>[] {
+  const values = s.data || [];
+  const base: number[] = [];
+  const increases: Array<number | string> = [];
+  const decreases: Array<number | string> = [];
+  let cumulative = 0;
+  for (const value of values) {
+    if (value >= 0) {
+      base.push(cumulative);
+      increases.push(value);
+      decreases.push('-');
+    } else {
+      base.push(cumulative + value);
+      increases.push('-');
+      decreases.push(Math.abs(value));
+    }
+    cumulative += value;
+  }
+  const stack = `waterfall-${index}`;
+  return [
+    { type: 'bar', stack, data: base, itemStyle: { color: 'transparent' }, silent: true, tooltip: { show: false } },
+    { name: `${s.name} +`, type: 'bar', stack, data: increases, itemStyle: { color: '#70AD47' }, label: { show: true, position: 'top' } },
+    { name: `${s.name} -`, type: 'bar', stack, data: decreases, itemStyle: { color: '#C00000' }, label: { show: true, position: 'bottom' } },
+  ];
 }
 
 // ===== 辅助函数 =====

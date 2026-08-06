@@ -21,6 +21,7 @@ import type { ChartModel } from '../chart/chart-model';
 import { parseChartXmlToModel } from '../chart/ooxml-chart-parser';
 import { parseThemeFromZip } from '../chart/theme-parser';
 import type { ChartTheme } from '../chart/theme-parser';
+import { getOoxmlNumber as getNum, toArray } from '../utils/ooxml';
 
 // ===== XML 解析配置 =====
 
@@ -51,23 +52,6 @@ const xmlParser = new XMLParser({
     return arrayNodes.includes(name);
   },
 });
-
-// ===== 工具函数 =====
-
-/** 安全获取数值 */
-function getNum(val: any): number {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') return parseInt(val, 10) || 0;
-  if (typeof val === 'object' && val['#text'] !== undefined) return parseInt(val['#text'], 10) || 0;
-  return 0;
-}
-
-/** 获取数组形式节点 */
-function toArray(val: any): any[] {
-  if (val === undefined || val === null) return [];
-  return Array.isArray(val) ? val : [val];
-}
 
 /** 解析相对路径 */
 function resolveRelativePath(baseDir: string, relativePath: string): string {

@@ -26,6 +26,7 @@
 
 import type { ChartModel, ChartSeriesModel, ChartType } from './chart-model';
 import type { ChartLayout, LayoutRect } from './layout-engine';
+import { OFFICE_CHART_COLORS } from './palette';
 import { computeLayout } from './layout-engine';
 
 // ===== 类型 =====
@@ -47,11 +48,6 @@ export interface CanvasRendererConfig {
 }
 
 // ===== 常量 =====
-
-const DEFAULT_PALETTE = [
-  '#5B9BD5', '#ED7D31', '#A5A5A5', '#FFC000',
-  '#4472C4', '#70AD47', '#264478', '#9B59B6',
-];
 
 const FONT_FAMILY = '"Calibri", "Microsoft YaHei", "Segoe UI", Arial, sans-serif';
 const FONT_SIZE_TITLE = 13;
@@ -133,7 +129,7 @@ export class CanvasChartRenderer {
 
   constructor(config: CanvasRendererConfig) {
     this.container = config.container;
-    this.palette = config.colorPalette || DEFAULT_PALETTE;
+    this.palette = config.colorPalette || [...OFFICE_CHART_COLORS];
     if (!this.container) throw new Error('[CanvasChartRenderer] container is required');
   }
 

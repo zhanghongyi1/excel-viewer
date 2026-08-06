@@ -4,7 +4,7 @@ exports[`Chart Parser — Area Chart > should match snapshot 1`] = `
 {
   "barDirection": undefined,
   "categories": undefined,
-  "grouping": undefined,
+  "grouping": "standard",
   "hasLegend": false,
   "hasSecondaryAxis": false,
   "id": "area_snapshot",

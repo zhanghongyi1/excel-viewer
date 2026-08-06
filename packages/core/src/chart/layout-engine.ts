@@ -169,7 +169,7 @@ export function computeLayout(model: ChartModel, size: ChartContainerSize): Char
 
 /** 判断是否为无坐标轴图表（饼图/环形图/雷达图） */
 function isAxislessChart(type: ChartModel['type']): boolean {
-  return type === 'pie' || type === 'doughnut' || type === 'radar';
+  return type === 'pie' || type === 'doughnut' || type === 'radar' || type === 'funnel';
 }
 
 /** 获取系列中最大数据点数量 */

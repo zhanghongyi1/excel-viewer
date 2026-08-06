@@ -8,6 +8,7 @@
  */
 
 import type { ParsedImage, ChartAnchor } from '../types';
+import { EMU_PER_PIXEL } from '../utils/ooxml';
 import type { PositionFn } from './chart-renderer';
 
 /** 像素区域 */
@@ -123,10 +124,10 @@ export class ImageRenderer {
       const startPos = this.positionFn(anchor.fromCol, anchor.fromRow);
       const endPos = this.positionFn(anchor.toCol, anchor.toRow);
 
-      const left = startPos.left + anchor.fromColOff / 9525;
-      const top = startPos.top + anchor.fromRowOff / 9525;
-      const right = endPos.left + anchor.toColOff / 9525;
-      const bottom = endPos.top + anchor.toRowOff / 9525;
+      const left = startPos.left + anchor.fromColOff / EMU_PER_PIXEL;
+      const top = startPos.top + anchor.fromRowOff / EMU_PER_PIXEL;
+      const right = endPos.left + anchor.toColOff / EMU_PER_PIXEL;
+      const bottom = endPos.top + anchor.toRowOff / EMU_PER_PIXEL;
 
       return {
         left: Math.round(left),
