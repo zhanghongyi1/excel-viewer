@@ -139,7 +139,7 @@ pnpm dev
 
 `pnpm dev` 启动 playground，默认地址为 `http://localhost:3000`。
 
-## 发布前检查
+## 发布
 
 ```bash
 pnpm --filter @excel-preview/core build
@@ -147,4 +147,4 @@ pnpm --filter @excel-preview/core test
 pnpm --filter @excel-preview/core pack --dry-run
 ```
 
-确认产物包含 `dist/` 与本 README 后，再在 `packages/core` 目录执行 `npm publish` 或 `pnpm publish`。
+确认产物包含 `dist/` 与本 README 后，发布请走 GitHub Actions CI（支持 provenance），完整流程见仓库根目录 [PUBLISH.md](../../PUBLISH.md)。
