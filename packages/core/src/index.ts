@@ -22,6 +22,7 @@ export type {
   ParsedImage,
   ParsedWorkbook,
   ViewerOptions,
+  ChartRenderOptions,
   ExcelSource,
   ExcelViewerOptions,
   RenderedEvent,

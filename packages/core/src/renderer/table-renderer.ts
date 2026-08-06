@@ -1,4 +1,4 @@
-import type { ParsedWorkbook, ParsedSheet, ParsedCell, ParsedPivotTable, PivotCacheRecord, ViewerOptions, CellStyle, CfRule, CfColorScale, CfDataBar } from '../types';
+import type { ParsedWorkbook, ParsedSheet, ParsedCell, ViewerOptions, CellStyle, CfRule, CfColorScale, CfDataBar } from '../types';
 import { colLetterToNumber } from '../utils/ooxml';
 
 const DEFAULT_COL_WIDTH = 80;
@@ -44,8 +44,7 @@ export class TableRenderer {
   private selectedMode: 'cell' | 'row' | 'col' | 'all' = 'cell';
 
   private onSwitchSheetCallback?: (index: number) => void;
-  private onCellSelectedCallback?: (cell: any, rowIndex: number, colIndex: number) => void;
-
+  private onDimensionsChangeCallback?: () => void;
   private options: ViewerOptions = {};
 
   // 最小行数和列数（用于容纳图表）
@@ -57,8 +56,9 @@ export class TableRenderer {
   private freezeColCount = 1;
 
   // 列宽/行高拖拽调整
-  private colWidthOverrides: Map<number, number> = new Map();
-  private rowHeightOverrides: Map<number, number> = new Map();
+  private colWidthOverridesBySheet: Map<number, Map<number, number>> = new Map();
+  private rowHeightOverridesBySheet: Map<number, Map<number, number>> = new Map();
+  private mergedNonStartCells: Set<string> = new Set();
   private resizeState: {
     type: 'col' | 'row';
     index: number;
@@ -66,11 +66,40 @@ export class TableRenderer {
     startSize: number;
   } | null = null;
 
-  // 数据透视表 UI 将在后续主版本清理，当前保留公开方法兼容性。
-  private pivotTableMode = false;
-  private pivotTableEl: HTMLDivElement | null = null;
+  private getColWidthOverrides(): Map<number, number> {
+    let overrides = this.colWidthOverridesBySheet.get(this.currentSheetIndex);
+    if (!overrides) {
+      overrides = new Map();
+      this.colWidthOverridesBySheet.set(this.currentSheetIndex, overrides);
+    }
+    return overrides;
+  }
+
+  private getRowHeightOverrides(): Map<number, number> {
+    let overrides = this.rowHeightOverridesBySheet.get(this.currentSheetIndex);
+    if (!overrides) {
+      overrides = new Map();
+      this.rowHeightOverridesBySheet.set(this.currentSheetIndex, overrides);
+    }
+    return overrides;
+  }
+
+  private buildMergeIndex(sheet: ParsedSheet): void {
+    this.mergedNonStartCells.clear();
+    for (const merge of sheet.merges) {
+      for (let row = merge.startRow; row <= merge.endRow; row++) {
+        for (let col = merge.startCol; col <= merge.endCol; col++) {
+          if (row !== merge.startRow || col !== merge.startCol) {
+            this.mergedNonStartCells.add(`${row}:${col}`);
+          }
+        }
+      }
+    }
+  }
 
   private buildStickyPositions(sheet: ParsedSheet): { top: number[]; left: number[] } {
+    const rowOverrides = this.getRowHeightOverrides();
+    const colOverrides = this.getColWidthOverrides();
     this.freezeRowCount = Math.max(1, sheet.freezePane?.ySplit ?? 1);
     this.freezeColCount = Math.max(1, sheet.freezePane?.xSplit ?? 1);
 
@@ -81,7 +110,7 @@ export class TableRenderer {
       if (r === 0) {
         cumHeight += HEADER_ROW_HEIGHT;
       } else {
-        cumHeight += getRowHeight(sheet, r - 1, this.rowHeightOverrides);
+        cumHeight += getRowHeight(sheet, r - 1, rowOverrides);
       }
     }
 
@@ -92,7 +121,7 @@ export class TableRenderer {
       if (c === 0) {
         cumWidth += HEADER_COL_WIDTH;
       } else {
-        cumWidth += getColWidth(sheet, c - 1, this.colWidthOverrides);
+        cumWidth += getColWidth(sheet, c - 1, colOverrides);
       }
     }
 
@@ -170,6 +199,9 @@ export class TableRenderer {
     this.currentSheetIndex = 0;
     this.selectedRow = -1;
     this.selectedCol = -1;
+    // 尺寸调整仅属于当前工作簿，不能泄漏到随后加载的文件。
+    this.colWidthOverridesBySheet.clear();
+    this.rowHeightOverridesBySheet.clear();
     this.renderSheet(0);
     this.renderSheetBar();
     this.onSwitchSheetCallback?.(0);
@@ -180,6 +212,10 @@ export class TableRenderer {
     if (!scrollEl || !this.workbookData) return;
     const sheet = this.workbookData.sheets[index];
     if (!sheet) return;
+
+    this.buildMergeIndex(sheet);
+    const colOverrides = this.getColWidthOverrides();
+    const rowOverrides = this.getRowHeightOverrides();
 
     scrollEl.innerHTML = '';
     const table = document.createElement('table');
@@ -214,7 +250,7 @@ export class TableRenderer {
       if (sheet.hiddenCols?.has(c)) continue;
       const th = document.createElement('th');
       th.dataset.col = String(c);
-      const colWidth = getColWidth(sheet, c, this.colWidthOverrides);
+      const colWidth = getColWidth(sheet, c, colOverrides);
       th.textContent = colNumToLetter(c);
       th.style.cssText = `
         ${this.stickyStyle(0, c + 1, freezeTop, freezeLeft)}
@@ -242,7 +278,7 @@ export class TableRenderer {
       if (sheet.hiddenRows?.has(r)) continue;
       const tr = document.createElement('tr');
 
-      const rowH = getRowHeight(sheet, r, this.rowHeightOverrides);
+      const rowH = getRowHeight(sheet, r, rowOverrides);
       tr.style.height = rowH + 'px';
 
       const rowTh = document.createElement('th');
@@ -276,20 +312,13 @@ export class TableRenderer {
         const cell = sheet.rows[r]?.[c];
 
         // 检查是否在合并区域内但不是起始单元格（跳过）
-        const isInMergeButNotStart = sheet.merges.some(
-          m =>
-            r >= m.startRow &&
-            r <= m.endRow &&
-            c >= m.startCol &&
-            c <= m.endCol &&
-            !(m.startRow === r && m.startCol === c)
-        );
+        const isInMergeButNotStart = this.mergedNonStartCells.has(`${r}:${c}`);
 
         if (isInMergeButNotStart) {
           continue; // 跳过被合并的单元格
         }
 
-        const colWidth = getColWidth(sheet, c, this.colWidthOverrides);
+        const colWidth = getColWidth(sheet, c, colOverrides);
         const td = document.createElement('td');
         td.dataset.row = String(r);
         td.dataset.col = String(c);
@@ -343,7 +372,7 @@ export class TableRenderer {
         const rowIdx = r;
         const colIdx = c;
         td.addEventListener('click', (e) => {
-          this.selectCell(td, rowIdx, colIdx, cell);
+          this.selectCell(rowIdx, colIdx);
         });
 
         tr.appendChild(td);
@@ -550,12 +579,11 @@ export class TableRenderer {
     return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
   }
 
-  private selectCell(td: HTMLElement, row: number, col: number, cell: any): void {
+  private selectCell(row: number, col: number): void {
     this.selectedRow = row;
     this.selectedCol = col;
     this.selectedMode = 'cell';
     this.highlightSelection();
-    this.onCellSelectedCallback?.(cell, row, col);
   }
 
   private selectRow(row: number): void {
@@ -563,7 +591,6 @@ export class TableRenderer {
     this.selectedCol = -1;
     this.selectedMode = 'row';
     this.highlightSelection();
-    this.onCellSelectedCallback?.(null, row, -1);
   }
 
   private selectColumn(col: number): void {
@@ -571,7 +598,6 @@ export class TableRenderer {
     this.selectedCol = col;
     this.selectedMode = 'col';
     this.highlightSelection();
-    this.onCellSelectedCallback?.(null, -1, col);
   }
 
   private selectAllCells(): void {
@@ -579,7 +605,6 @@ export class TableRenderer {
     this.selectedCol = -1;
     this.selectedMode = 'all';
     this.highlightSelection();
-    this.onCellSelectedCallback?.(null, -1, -1);
   }
 
   private highlightSelection(): void {
@@ -754,14 +779,14 @@ export class TableRenderer {
     }
     let left = HEADER_COL_WIDTH;
     for (let i = 0; i < col; i++) {
-      left += i < sheet.colWidths.length ? getColWidth(sheet, i, this.colWidthOverrides) : DEFAULT_COL_WIDTH;
+      left += i < sheet.colWidths.length ? getColWidth(sheet, i, this.getColWidthOverrides()) : DEFAULT_COL_WIDTH;
     }
     let top = HEADER_ROW_HEIGHT;
     for (let i = 0; i < row; i++) {
-      top += i < sheet.rowHeights.length ? getRowHeight(sheet, i, this.rowHeightOverrides) : DEFAULT_ROW_HEIGHT;
+      top += i < sheet.rowHeights.length ? getRowHeight(sheet, i, this.getRowHeightOverrides()) : DEFAULT_ROW_HEIGHT;
     }
-    const width = col < sheet.colWidths.length ? getColWidth(sheet, col, this.colWidthOverrides) : DEFAULT_COL_WIDTH;
-    const height = row < sheet.rowHeights.length ? getRowHeight(sheet, row, this.rowHeightOverrides) : DEFAULT_ROW_HEIGHT;
+    const width = col < sheet.colWidths.length ? getColWidth(sheet, col, this.getColWidthOverrides()) : DEFAULT_COL_WIDTH;
+    const height = row < sheet.rowHeights.length ? getRowHeight(sheet, row, this.getRowHeightOverrides()) : DEFAULT_ROW_HEIGHT;
     return { left, top, width, height };
   }
 
@@ -769,8 +794,9 @@ export class TableRenderer {
     this.onSwitchSheetCallback = callback;
   }
 
-  onCellSelected(callback: (cell: any, rowIndex: number, colIndex: number) => void): void {
-    this.onCellSelectedCallback = callback;
+  /** 列宽或行高变化后通知浮层重新计算锚点位置。 */
+  onDimensionsChange(callback: () => void): void {
+    this.onDimensionsChangeCallback = callback;
   }
 
   // ===== 列宽/行高拖拽调整 =====
@@ -784,7 +810,7 @@ export class TableRenderer {
       type: 'col',
       index: colIndex,
       startPos: e.clientX,
-      startSize: getColWidth(sheet, colIndex, this.colWidthOverrides),
+      startSize: getColWidth(sheet, colIndex, this.getColWidthOverrides()),
     };
     document.addEventListener('mousemove', this.onResizeMove);
     document.addEventListener('mouseup', this.onResizeEnd);
@@ -801,7 +827,7 @@ export class TableRenderer {
       type: 'row',
       index: rowIndex,
       startPos: e.clientY,
-      startSize: getRowHeight(sheet, rowIndex, this.rowHeightOverrides),
+      startSize: getRowHeight(sheet, rowIndex, this.getRowHeightOverrides()),
     };
     document.addEventListener('mousemove', this.onResizeMove);
     document.addEventListener('mouseup', this.onResizeEnd);
@@ -818,14 +844,15 @@ export class TableRenderer {
     if (state.type === 'col') {
       const diff = e.clientX - state.startPos;
       const newWidth = Math.max(30, state.startSize + diff);
-      this.colWidthOverrides.set(state.index, newWidth);
+      this.getColWidthOverrides().set(state.index, newWidth);
       this.applyColWidth(state.index, newWidth);
     } else {
       const diff = e.clientY - state.startPos;
       const newHeight = Math.max(18, state.startSize + diff);
-      this.rowHeightOverrides.set(state.index, newHeight);
+      this.getRowHeightOverrides().set(state.index, newHeight);
       this.applyRowHeight(state.index, newHeight);
     }
+    this.onDimensionsChangeCallback?.();
   };
 
   private onResizeEnd = (): void => {
@@ -871,149 +898,12 @@ export class TableRenderer {
     }
   }
 
-  // ===== 数据透视表 =====
-
-  isPivotTableMode(): boolean {
-    return this.pivotTableMode;
-  }
-
-  togglePivotTable(): void {
-    this.pivotTableMode = !this.pivotTableMode;
-    if (this.pivotTableMode) {
-      this.renderPivotTable();
-    } else {
-      this.hidePivotTable();
-    }
-  }
-
-  private getCurrentPivotTable(): ParsedPivotTable | undefined {
-    if (!this.workbookData?.pivotTables) return undefined;
-    return this.workbookData.pivotTables.find(pt => pt.sheetIndex === this.currentSheetIndex);
-  }
-
-  private renderPivotTable(): void {
-    if (!this.scrollEl) return;
-    const pivotTable = this.getCurrentPivotTable();
-    if (!pivotTable) {
-      this.pivotTableMode = false;
-      return;
-    }
-
-    // Hide normal table
-    const table = this.scrollEl.querySelector('table');
-    if (table) table.style.display = 'none';
-
-    // Create or show pivot table overlay
-    if (!this.pivotTableEl) {
-      this.pivotTableEl = document.createElement('div');
-      this.pivotTableEl.className = 'excel-pivot-table';
-      this.pivotTableEl.style.cssText = 'overflow:auto;height:100%;padding:8px;';
-      this.scrollEl.appendChild(this.pivotTableEl);
-    }
-
-    this.pivotTableEl.style.display = 'block';
-
-    // Group records by row fields
-    const rowIndices = pivotTable.rowFieldIndices;
-    const colIndices = pivotTable.colFieldIndices;
-    const dataFields = pivotTable.dataFields;
-    const records = pivotTable.cacheRecords;
-    const fields = pivotTable.cacheFields;
-
-    // Build grouped data
-    const groups: Map<string, {
-      keys: string[];
-      records: PivotCacheRecord[];
-      subtotals: Map<number, number>;
-    }> = new Map();
-
-    for (const rec of records) {
-      const keyParts = rowIndices.map(i => String(rec.values[i] ?? ''));
-      const key = keyParts.join('||');
-      if (!groups.has(key)) {
-        groups.set(key, { keys: keyParts, records: [], subtotals: new Map() });
-      }
-      groups.get(key)!.records.push(rec);
-
-      // Calculate subtotals
-      for (const df of dataFields) {
-        const val = parseFloat(String(rec.values[df.fieldIndex] ?? '0'));
-        const current = groups.get(key)!.subtotals.get(df.fieldIndex) || 0;
-        groups.get(key)!.subtotals.set(df.fieldIndex, current + val);
-      }
-    }
-
-    // Build HTML
-    const html: string[] = [];
-    html.push(`<div style="font-weight:bold;margin-bottom:8px;font-size:13px;color:#333;">${pivotTable.name}</div>`);
-    html.push('<table style="border-collapse:collapse;font-size:12px;width:100%;">');
-
-    // Header row
-    html.push('<tr>');
-    for (const ri of rowIndices) {
-      html.push(`<th style="border:1px solid #d0d0d0;background:#f3f3f3;padding:4px 8px;text-align:left;font-weight:500;">${fields[ri]?.name || `Row ${ri}`}</th>`);
-    }
-    for (const df of dataFields) {
-      html.push(`<th style="border:1px solid #d0d0d0;background:#f3f3f3;padding:4px 8px;text-align:right;font-weight:500;">${df.name}</th>`);
-    }
-    html.push('</tr>');
-
-    // Data rows
-    for (const [key, group] of groups.entries()) {
-      html.push('<tr>');
-      for (const k of group.keys) {
-        html.push(`<td style="border:1px solid #e0e0e0;padding:3px 8px;">${k}</td>`);
-      }
-      for (const df of dataFields) {
-        const total = group.subtotals.get(df.fieldIndex) || 0;
-        html.push(`<td style="border:1px solid #e0e0e0;padding:3px 8px;text-align:right;">${total}</td>`);
-      }
-      html.push('</tr>');
-    }
-
-    // Grand total
-    if (groups.size > 1) {
-      html.push('<tr>');
-      html.push(`<td style="border:1px solid #e0e0e0;padding:3px 8px;font-weight:500;background:#f9f9f9;" colspan="${rowIndices.length}">总计</td>`);
-      const grandTotals = new Map<number, number>();
-      for (const group of groups.values()) {
-        for (const [fi, val] of group.subtotals) {
-          grandTotals.set(fi, (grandTotals.get(fi) || 0) + val);
-        }
-      }
-      for (const df of dataFields) {
-        const total = grandTotals.get(df.fieldIndex) || 0;
-        html.push(`<td style="border:1px solid #e0e0e0;padding:3px 8px;text-align:right;font-weight:500;background:#f9f9f9;">${total}</td>`);
-      }
-      html.push('</tr>');
-    }
-
-    html.push('</table>');
-
-    // Record count
-    html.push(`<div style="margin-top:6px;font-size:11px;color:#888;">共 ${records.length} 条记录</div>`);
-
-    this.pivotTableEl.innerHTML = html.join('');
-
-    // Notify callback
-    this.onCellSelectedCallback?.(null, -1, -1);
-  }
-
-  private hidePivotTable(): void {
-    if (this.scrollEl) {
-      const table = this.scrollEl.querySelector('table');
-      if (table) table.style.display = '';
-    }
-    if (this.pivotTableEl) {
-      this.pivotTableEl.style.display = 'none';
-    }
-  }
-
   destroy(): void {
     this.isDestroyed = true;
     this.onResizeEnd();
-    this.colWidthOverrides.clear();
-    this.rowHeightOverrides.clear();
+    this.colWidthOverridesBySheet.clear();
+    this.rowHeightOverridesBySheet.clear();
+    this.mergedNonStartCells.clear();
     if (this.rootEl && this.rootEl.parentNode) {
       this.rootEl.parentNode.removeChild(this.rootEl);
     }
@@ -1023,6 +913,6 @@ export class TableRenderer {
     this.sheetBar = null;
     this.workbookData = null;
     this.onSwitchSheetCallback = undefined;
-    this.onCellSelectedCallback = undefined;
+    this.onDimensionsChangeCallback = undefined;
   }
 }

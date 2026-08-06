@@ -13,36 +13,22 @@
  * 用户可通过 renderer 选项强制指定。
  */
 
-import type { ChartAnchor } from '../types';
+import type { ChartAnchor, ChartRenderOptions } from '../types';
 import type { ChartModel } from '../chart/chart-model';
 import { computeLayout } from '../chart/layout-engine';
 import { convertToEChartsOption } from '../chart/echarts-converter';
 import { CanvasChartRenderer } from '../chart/canvas-chart-renderer';
-import { EMU_PER_PIXEL } from '../utils/ooxml';
+import { calculateAnchorRect } from './anchor-position';
+import type { PixelRect as Rect, PositionFn } from './anchor-position';
 
-/** 像素区域 */
-interface Rect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-/** 单元格位置查询函数类型 */
-export type PositionFn = (col: number, row: number) => Rect;
+export type { PositionFn } from './anchor-position';
 
 /** 渲染后端类型（默认 echarts） */
 export type ChartBackend = 'echarts' | 'canvas' | 'auto';
 
-interface ChartRendererConfig {
+interface ChartRendererConfig extends ChartRenderOptions {
   /** 表格容器（图表浮层将叠加在此容器上方） */
   container: HTMLElement;
-  /** ECharts 库引用（可选，不传则使用 Canvas 渲染） */
-  echartsLib?: any;
-  /** 渲染后端（默认 auto） */
-  backend?: ChartBackend;
-  /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
-  renderer?: 'svg' | 'canvas';
   /** 主题颜色序列 */
   colorPalette?: string[];
 }
@@ -78,9 +64,9 @@ export class ChartRenderer {
    */
   init(config: ChartRendererConfig): void {
     this.container = config.container;
-    this.echartsLib = config.echartsLib;
-    this.backend = config.backend || 'auto';
-    this.renderer = config.renderer || 'svg';
+    this.echartsLib = config.echarts;
+    this.backend = config.chartBackend || 'auto';
+    this.renderer = config.echartsRenderer || 'svg';
 
     if (!this.container) {
       throw new Error('[ChartRenderer] Container element is required');
@@ -257,18 +243,7 @@ export class ChartRenderer {
 
   calculateArea(anchor: ChartAnchor): Rect {
     if (this.positionFn) {
-      const startPos = this.positionFn(anchor.fromCol, anchor.fromRow);
-      const endPos = this.positionFn(anchor.toCol, anchor.toRow);
-      const left = startPos.left + anchor.fromColOff / EMU_PER_PIXEL;
-      const top = startPos.top + anchor.fromRowOff / EMU_PER_PIXEL;
-      const right = endPos.left + anchor.toColOff / EMU_PER_PIXEL;
-      const bottom = endPos.top + anchor.toRowOff / EMU_PER_PIXEL;
-      return {
-        left: Math.round(left),
-        top: Math.round(top),
-        width: Math.round(right - left),
-        height: Math.round(bottom - top),
-      };
+      return calculateAnchorRect(anchor, this.positionFn);
     }
 
     const DEFAULT_COL_PX = 80;

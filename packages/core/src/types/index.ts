@@ -255,31 +255,22 @@ export interface ParsedWorkbook {
 
 // ===== 渲染选项 =====
 
+/** 图表渲染共享配置 */
+export interface ChartRenderOptions {
+  /** ECharts 实例；不传时由 ExcelViewer 按需加载 */
+  echarts?: any;
+  chartBackend?: 'echarts' | 'canvas' | 'auto';
+  echartsRenderer?: 'svg' | 'canvas';
+}
+
 /** 预览器配置选项 */
-export interface ViewerOptions {
+export interface ViewerOptions extends ChartRenderOptions {
   /** 最小列数 */
   minColLength?: number;
   /** 最小行数 */
   minRowLength?: number;
-  /** 是否显示右键菜单 */
-  /** @deprecated 当前为只读预览器，不提供右键菜单。 */
-  showContextmenu?: boolean;
   /** 是否显示底部 Sheet 切换栏 */
   showToolbar?: boolean;
-  /**
-   * 注入 echarts 实例（用于按需引入减小包体积）
-   * 示例: import * as echarts from 'echarts/core' + 注册组件
-   * 如果不传入，则在实际需要图表时动态加载 ECharts
-   */
-  echarts?: any;
-  /** 图表渲染后端: 'echarts' | 'canvas' | 'auto'（默认 echarts） */
-  chartBackend?: 'echarts' | 'canvas' | 'auto';
-  /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
-  echartsRenderer?: 'svg' | 'canvas';
-  /** @deprecated 尚未实现，请在调用 render 前预处理数据。 */
-  beforeTransformData?: (workbook: any) => any;
-  /** @deprecated 尚未实现，请使用 parseExcel 后自行转换。 */
-  transformData?: (data: any) => any;
 }
 
 // ===== ExcelViewer 高阶选项 =====
@@ -288,7 +279,7 @@ export interface ViewerOptions {
 export type ExcelSource = string | File | Blob | ArrayBuffer;
 
 /** ExcelViewer 构造选项 */
-export interface ExcelViewerOptions {
+export interface ExcelViewerOptions extends ChartRenderOptions {
   /** 挂载目标：CSS 选择器或 HTMLElement */
   target?: HTMLElement | string;
   /** 初始数据源 */
@@ -301,12 +292,6 @@ export interface ExcelViewerOptions {
   showToolbar?: boolean;
   /** 是否解析数据透视表缓存（默认 false，解析大文件会增加开销） */
   parsePivotTables?: boolean;
-  /** ECharts 实例（可注入按需构建，不传则由核心包动态加载） */
-  echarts?: any;
-  /** 图表渲染后端（默认 echarts） */
-  chartBackend?: 'echarts' | 'canvas' | 'auto';
-  /** ECharts 渲染器: 'svg' | 'canvas'（默认 svg） */
-  echartsRenderer?: 'svg' | 'canvas';
   /** 渲染完成回调 */
   onRendered?: () => void;
   /** 错误回调 */

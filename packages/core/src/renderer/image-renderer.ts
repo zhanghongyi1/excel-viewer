@@ -8,16 +8,8 @@
  */
 
 import type { ParsedImage, ChartAnchor } from '../types';
-import { EMU_PER_PIXEL } from '../utils/ooxml';
-import type { PositionFn } from './chart-renderer';
-
-/** 像素区域 */
-interface Rect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
+import { calculateAnchorRect } from './anchor-position';
+import type { PixelRect as Rect, PositionFn } from './anchor-position';
 
 interface ImageRendererConfig {
   /** 表格容器（图片浮层将叠加在此容器上方） */
@@ -90,11 +82,25 @@ export class ImageRenderer {
   private renderVisibleImages(): void {
     if (this.isDestroyed || !this.currentImages.length || !this.positionFn) return;
     for (const image of this.currentImages) {
-      const containerEl = this.imageContainers.get(image.id);
-      if (!containerEl) {
+      if (this.isImageVisible(image)) {
         this.renderImage(image);
+      } else {
+        this.removeImage(image.id);
       }
     }
+  }
+
+  /** 给滚动视口增加缓冲区，减少滚动边缘图片频繁创建与销毁。 */
+  private isImageVisible(image: ParsedImage): boolean {
+    if (!this.container) return false;
+    const area = this.calculateArea(image.anchor);
+    const buffer = 300;
+    const left = this.container.scrollLeft - buffer;
+    const top = this.container.scrollTop - buffer;
+    const right = this.container.scrollLeft + this.container.clientWidth + buffer;
+    const bottom = this.container.scrollTop + this.container.clientHeight + buffer;
+    return area.left + area.width >= left && area.left <= right &&
+      area.top + area.height >= top && area.top <= bottom;
   }
 
   /**
@@ -121,20 +127,7 @@ export class ImageRenderer {
    */
   calculateArea(anchor: ChartAnchor): Rect {
     if (this.positionFn) {
-      const startPos = this.positionFn(anchor.fromCol, anchor.fromRow);
-      const endPos = this.positionFn(anchor.toCol, anchor.toRow);
-
-      const left = startPos.left + anchor.fromColOff / EMU_PER_PIXEL;
-      const top = startPos.top + anchor.fromRowOff / EMU_PER_PIXEL;
-      const right = endPos.left + anchor.toColOff / EMU_PER_PIXEL;
-      const bottom = endPos.top + anchor.toRowOff / EMU_PER_PIXEL;
-
-      return {
-        left: Math.round(left),
-        top: Math.round(top),
-        width: Math.round(right - left),
-        height: Math.round(bottom - top),
-      };
+      return calculateAnchorRect(anchor, this.positionFn);
     }
 
     // 回退：使用默认估算值
@@ -260,10 +253,7 @@ export class ImageRenderer {
       }
     }
 
-    // 渲染每个图片
-    for (const image of images) {
-      this.renderImage(image);
-    }
+    this.renderVisibleImages();
   }
 
   /**
@@ -283,6 +273,7 @@ export class ImageRenderer {
         containerEl.style.height = `${Math.max(area.height, 20)}px`;
       }
     }
+    this.renderVisibleImages();
   }
 
   /**

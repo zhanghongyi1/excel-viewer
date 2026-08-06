@@ -55,6 +55,7 @@ export class ExcelViewer {
       this.rootElement = target;
     }
     this.buildLayout();
+    this.renderBlankSheet();
   }
 
   async render(src?: ExcelSource): Promise<void> {
@@ -108,24 +109,7 @@ export class ExcelViewer {
         }
       }
 
-      if (!this.tableRenderer) {
-        this.tableRenderer = new TableRenderer();
-        this.tableRenderer.init({
-          container: this.wrapperEl!,
-          options: { echarts: this.options.echarts, showToolbar: this.options.showToolbar },
-        });
-        this.tableRenderer.onSwitchSheet((idx) => {
-          // 切换 sheet 时先清除旧图表和图片引用
-          this.chartRenderer?.clearAll();
-          this.imageRenderer?.clearAll();
-          setTimeout(() => {
-            this.renderCurrentSheetCharts();
-            this.renderCurrentSheetImages();
-          }, 50);
-          const sheet = this.workbook?.sheets[idx];
-          if (sheet) this.options.onSheetChange?.(sheet.name, idx);
-        });
-      }
+      const tableRenderer = this.ensureTableRenderer();
 
       // 计算图表和图片需要的最大行/列数（图表区域之后多加载 5 行缓冲）
       const ROW_BUFFER = 5;
@@ -142,15 +126,12 @@ export class ExcelViewer {
       }
 
       // 设置最小行/列数以容纳图表
-      if (maxChartRow > 0) {
-        this.tableRenderer.setMinRowCount(maxChartRow);
-      }
-      if (maxChartCol > 0) {
-        this.tableRenderer.setMinColCount(maxChartCol);
-      }
+      // 每次加载都覆盖上次文件的扩展尺寸，避免旧文件留下大量空白行列。
+      tableRenderer.setMinRowCount(maxChartRow);
+      tableRenderer.setMinColCount(maxChartCol);
 
       // loadData 会重建表格（scrollEl.innerHTML = ''），清除所有旧 DOM
-      this.tableRenderer.loadData(this.workbook);
+      tableRenderer.loadData(this.workbook);
 
       // 清除图表和图片渲染器的旧引用
       this.chartRenderer?.clearAll();
@@ -160,10 +141,10 @@ export class ExcelViewer {
         if (!this.chartRenderer) {
           this.chartRenderer = new ChartRenderer();
           this.chartRenderer.init({
-            container: this.tableRenderer.getScrollContainer()!,
-            echartsLib: this.options.echarts,
-            backend: this.options.chartBackend || 'auto',
-            renderer: this.options.echartsRenderer,
+            container: tableRenderer.getScrollContainer()!,
+            echarts: this.options.echarts,
+            chartBackend: this.options.chartBackend || 'auto',
+            echartsRenderer: this.options.echartsRenderer,
           });
         }
         this.renderCurrentSheetCharts();
@@ -173,7 +154,7 @@ export class ExcelViewer {
         if (!this.imageRenderer) {
           this.imageRenderer = new ImageRenderer();
           this.imageRenderer.init({
-            container: this.tableRenderer.getScrollContainer()!,
+            container: tableRenderer.getScrollContainer()!,
           });
         }
         this.renderCurrentSheetImages();
@@ -278,6 +259,47 @@ export class ExcelViewer {
       const overlays = this.wrapperEl.querySelectorAll('.excel-preview-chart, .excel-preview-chart-box, .excel-preview-image');
       overlays.forEach(el => el.remove());
     }
+  }
+
+  private ensureTableRenderer(): TableRenderer {
+    if (this.tableRenderer) return this.tableRenderer;
+
+    const tableRenderer = new TableRenderer();
+    tableRenderer.init({
+      container: this.wrapperEl!,
+      options: { echarts: this.options.echarts, showToolbar: this.options.showToolbar },
+    });
+    tableRenderer.onSwitchSheet((idx) => {
+      this.chartRenderer?.clearAll();
+      this.imageRenderer?.clearAll();
+      this.renderCurrentSheetCharts();
+      this.renderCurrentSheetImages();
+      const sheet = this.workbook?.sheets[idx];
+      if (sheet) this.options.onSheetChange?.(sheet.name, idx);
+    });
+    tableRenderer.onDimensionsChange(() => {
+      this.chartRenderer?.updatePositions();
+      this.imageRenderer?.updatePositions();
+    });
+    this.tableRenderer = tableRenderer;
+    return tableRenderer;
+  }
+
+  /** 在用户选择文件前提供与 Excel 一致的空白工作区。 */
+  private renderBlankSheet(): void {
+    const tableRenderer = this.ensureTableRenderer();
+    tableRenderer.setMinRowCount(50);
+    tableRenderer.setMinColCount(26);
+    tableRenderer.loadData({
+      sheets: [{
+        name: 'Sheet1',
+        id: 'blank-sheet',
+        rows: [],
+        merges: [],
+        colWidths: [],
+        rowHeights: [],
+      }],
+    });
   }
 
   private showLoading(): void { if (this.loadingEl) this.loadingEl.style.display = 'flex'; }
