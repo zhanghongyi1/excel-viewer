@@ -167,6 +167,21 @@ describe('Excel Parser — formula calculation', () => {
       type: 'formula',
     });
   });
+
+  it('cleans up floating-point artifacts in cached numeric values like Excel', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    sheet.getCell('A1').value = 0.1 + 0.2;
+    sheet.getCell('A2').value = 1 / 3;
+    sheet.getCell('A3').value = 37.057000000000002;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const parsed = await parseExcel(buffer);
+
+    expect(parsed.sheets[0].rows[0][0]).toMatchObject({ text: '0.3', type: 'number' });
+    expect(parsed.sheets[0].rows[1][0]).toMatchObject({ text: '0.333333333333333', type: 'number' });
+    expect(parsed.sheets[0].rows[2][0]).toMatchObject({ text: '37.057', type: 'number' });
+  });
 });
 
 describe('Chart Parser — Bar Chart', () => {

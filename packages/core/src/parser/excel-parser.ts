@@ -583,59 +583,12 @@ function getValueType(value: any): ExcelJS.ValueType {
 
 /**
  * 智能格式化数字，去除浮点数精度误差
- * 例如：37.057000000000002 -> 37.057
+ * 采用与 Excel 一致的 15 位有效数字显示精度：
+ * 0.1 + 0.2 => 0.3; 37.057000000000002 => 37.057; 1/3 => 0.333333333333333
  */
 function smartFormatNumber(value: number): string {
-  // 处理科学计数法
-  if (Math.abs(value) < 0.0001 || Math.abs(value) > 1e9) {
-    return String(value);
-  }
-
-  // 转换为字符串并去除末尾的 0
-  let str = value.toFixed(10);
-
-  // 去除末尾的 0
-  while (str.includes('.') && (str.endsWith('0') || str.endsWith('.'))) {
-    if (str.endsWith('.')) {
-      str = str.slice(0, -1);
-      break;
-    }
-    str = str.slice(0, -1);
-  }
-
-  // 如果结果是整数，直接返回
-  if (!str.includes('.')) {
-    return str;
-  }
-
-  // 进一步清理：检测并修复类似 37.0569999999 -> 37.057 的情况
-  const match = str.match(/^(-?\d+)\.(\d+)$/);
-  if (match) {
-    const intPart = match[1];
-    let decimalPart = match[2];
-
-    // 如果小数部分很长且末尾有多个 9 或 0，尝试四舍五入
-    if (decimalPart.length >= 8) {
-      // 检查末尾是否是 999... 或 000...
-      const lastChar = decimalPart[decimalPart.length - 1];
-      let trailingCount = 0;
-      for (let i = decimalPart.length - 1; i >= 0; i--) {
-        if (decimalPart[i] === lastChar && (lastChar === '9' || lastChar === '0')) {
-          trailingCount++;
-        } else {
-          break;
-        }
-      }
-
-      // 如果末尾有超过 5 个 9 或 0，进行四舍五入
-      if (trailingCount >= 5) {
-        const precision = Math.max(1, decimalPart.length - trailingCount);
-        return String(parseFloat(value.toFixed(precision)));
-      }
-    }
-  }
-
-  return str;
+  if (!Number.isFinite(value)) return String(value);
+  return String(parseFloat(value.toPrecision(15)));
 }
 
 /**
@@ -694,7 +647,7 @@ function formatNumberValue(value: number, cell: ExcelJS.Cell): string {
     return value.toFixed(precision);
   }
 
-  return String(value);
+  return smartFormatNumber(value);
 }
 
 /**
