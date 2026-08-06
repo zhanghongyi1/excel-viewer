@@ -592,6 +592,58 @@ function smartFormatNumber(value: number): string {
 }
 
 /**
+ * 解析 Excel 数字格式的「首个数值段」，提取百分比/货币/小数位/千分位等特征。
+ * 兼容带颜色、条件、括号、转义字符的多段格式，如 "0.0_);[Red](0.0)"、"#,##0.00;[Red](#,##0.00)"。
+ */
+function parseNumFmt(numFmt: string): {
+  percent: boolean;
+  currency: string;
+  grouped: boolean;
+  precision: number;
+  isNumeric: boolean;
+} {
+  // 取第一个 ';' 分段（正数部分）
+  let section = numFmt.split(';')[0];
+  // 去掉引号包裹的文本
+  section = section.replace(/"[^"]*"/g, '');
+  // 去掉转义字符（如 \_ \） ）  以及 [_...] 占位段
+  section = section.replace(/\\[^\\]*/g, '').replace(/\[[^\]]*\]/g, '');
+
+  const percent = section.includes('%');
+
+  let currency = '';
+  if (section.startsWith('"¥"')) currency = '¥';
+  else if (section.startsWith('$')) currency = '$';
+  else if (section.includes('¥')) currency = '¥';
+
+  const grouped = section.includes('#,##');
+
+  // 仅保留 0 # . 以判断是否为纯数字格式
+  const digits = section.replace(/[^0#.]/g, '');
+
+  const dot = digits.lastIndexOf('.');
+  const precision = dot >= 0 ? (digits.slice(dot + 1).match(/0/g) || []).length : 0;
+
+  return { percent, currency, grouped, precision, isNumeric: /^[0#.]+$/.test(digits) };
+}
+
+/** 整数部分添加千分位分隔符 */
+function addThousandsSeparator(result: string): string {
+  const parts = result.split('.');
+  const intPart = parts[0].split('').reverse();
+  const newIntPart: string[] = [];
+  for (let i = 0; i < intPart.length; i++) {
+    newIntPart.push(intPart[i]);
+    if ((i + 1) % 3 === 0 && i < intPart.length - 1 && intPart[i + 1] !== '-') {
+      newIntPart.push(',');
+    }
+  }
+  let grouped = newIntPart.reverse().join('');
+  if (parts.length > 1) grouped += '.' + parts[1];
+  return grouped;
+}
+
+/**
  * 数字值格式化
  */
 function formatNumberValue(value: number, cell: ExcelJS.Cell): string {
@@ -601,50 +653,28 @@ function formatNumberValue(value: number, cell: ExcelJS.Cell): string {
     return smartFormatNumber(value);
   }
 
+  const fmt = parseNumFmt(numFmt);
+
   // 百分比格式
-  if (numFmt.includes('%')) {
-    const precisionMatch = numFmt.match(/\.(\d+)%/);
-    if (precisionMatch) {
-      return (value * 100).toFixed(precisionMatch[1].length) + '%';
-    }
-    return (value * 100).toFixed(0) + '%';
+  if (fmt.percent) {
+    return (value * 100).toFixed(fmt.precision) + '%';
   }
 
   // 货币格式
-  if (numFmt.startsWith('$') || numFmt.startsWith('"¥"') || numFmt.includes('¥')) {
-    const prefix = numFmt.startsWith('"¥"') ? '¥' : (numFmt.startsWith('$') ? '$' : '');
-    const precisionMatch = numFmt.match(/0\.(0+)/);
-    const precision = precisionMatch ? precisionMatch[1].length : 0;
-
+  if (fmt.currency) {
     if (value === 0 && numFmt.startsWith('_')) {
       return '-';
     }
-
-    let result = value.toFixed(precision);
-
-    // 千分位分隔符
-    if (numFmt.includes('#,##')) {
-      const parts = result.split('.');
-      const intPart = parts[0].split('').reverse();
-      const newIntPart: string[] = [];
-      for (let i = 0; i < intPart.length; i++) {
-        newIntPart.push(intPart[i]);
-        if ((i + 1) % 3 === 0 && i < intPart.length - 1 && intPart[i + 1] !== '-') {
-          newIntPart.push(',');
-        }
-      }
-      result = newIntPart.reverse().join('');
-      if (parts.length > 1) result += '.' + parts[1];
-    }
-
-    return prefix + result;
+    let result = value.toFixed(fmt.precision);
+    if (fmt.grouped) result = addThousandsSeparator(result);
+    return fmt.currency + result;
   }
 
   // 普通数字
-  if (/^0+(\.0+)?$/.test(numFmt.replace(/[^0.]/g, ''))) {
-    const precisionMatch = numFmt.match(/0\.(0+)/);
-    const precision = precisionMatch ? precisionMatch[1].length : 0;
-    return value.toFixed(precision);
+  if (fmt.isNumeric) {
+    let result = value.toFixed(fmt.precision);
+    if (fmt.grouped) result = addThousandsSeparator(result);
+    return result;
   }
 
   return smartFormatNumber(value);
