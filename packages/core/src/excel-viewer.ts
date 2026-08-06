@@ -1,5 +1,6 @@
 import type { ExcelSource, ExcelViewerOptions, ParsedWorkbook, ParsedSheet } from './types';
 import type { ChartModel } from './chart/chart-model';
+import ExcelJS from 'exceljs';
 import { loadData } from './loader';
 import { parseExcel } from './parser/excel-parser';
 import { parseCharts } from './parser/chart-parser';
@@ -84,7 +85,7 @@ export class ExcelViewer {
         throw new Error('[ExcelViewer] No readable worksheets found.');
       }
 
-      const rawWb = new (await import('exceljs')).Workbook();
+      const rawWb = new ExcelJS.Workbook();
       if (this.isDestroyed || renderVersion !== this.renderVersion) return;
       await rawWb.xlsx.load(fileData);
       const { charts, images } = await parseCharts(fileData, rawWb);
