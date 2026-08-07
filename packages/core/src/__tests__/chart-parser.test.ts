@@ -672,6 +672,8 @@ describe('ECharts Converter', () => {
     expect(option.series).toBeDefined();
     expect(option.series[0].type).toBe('bar');
     expect(option.series[0].data).toEqual([10, 20, 30]);
+    expect(option.series[0].barCategoryGap).toBe('10%');
+    expect(option.series[0].barGap).toBe('0%');
     expect(option.xAxis).toBeDefined();
     expect(option.yAxis).toBeDefined();
   });
