@@ -547,11 +547,11 @@ export class CanvasChartRenderer {
 
     // 计算柱宽
     const categorySpace = isHorizontal ? plotArea.height / count : plotArea.width / count;
-    const gap = categorySpace * 0.2;
+    const gap = categorySpace * 0.1;
     const barAreaWidth = categorySpace - gap;
     const barWidth = isStacked
-      ? barAreaWidth * 0.7
-      : (barAreaWidth / seriesCount) * 0.8;
+      ? barAreaWidth
+      : barAreaWidth / seriesCount;
 
     for (let ci = 0; ci < count; ci++) {
       const categoryStart = isHorizontal

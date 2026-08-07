@@ -393,7 +393,6 @@ function convertSeries(
         ? normalizePercentSeries(model, index)
         : (s.data || []);
       if (s.barWidth !== undefined) series.barWidth = s.barWidth;
-      if (model.plotArea?.gapWidth !== undefined) series.barCategoryGap = `${model.plotArea.gapWidth}%`;
       if (model.grouping === 'stacked' || model.grouping === 'percentStacked') {
         series.stack = model.grouping;
       }
