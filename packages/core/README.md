@@ -2,12 +2,81 @@
 
 浏览器端 Excel `.xlsx` 预览组件：渲染工作表、样式、合并单元格、图片和 OpenXML 图表。核心包不依赖 Vue、React 等框架，可直接用于原生 JavaScript 或任意前端框架。
 
+## 功能总览
+
+`@excel-preview/core` 的定位是**只读工作簿预览**：以 `.xlsx` 的 OpenXML 结构为输入，尽可能还原报表中的数据、版式、计算结果和图表，而不是将其转成图片或只输出单元格文本。
+
+| 能力 | 组件提供的功能 | 使用价值 |
+| --- | --- | --- |
+| 多源加载 | URL、`File`、`Blob`、`ArrayBuffer` | 文件选择、接口下载、对象存储和内存数据使用同一套 API |
+| 工作表浏览 | 仅解析可见 Sheet、底部 Sheet 标签切换、滚动与 50%–200% 缩放 | 可直接阅读多工作表报表，无需下载到本地 Excel |
+| 单元格与版式 | 文本、数值、日期、布尔值、公式、富文本、超链接、批注、数字格式、合并单元格、隐藏行列、冻结窗格 | 表头层级、金额/日期/百分比格式与备注等业务上下文可保留 |
+| 样式与强调 | 字体、填充、边框、对齐、换行、Office 主题色；数值比较、受限表达式、色阶与数据条条件格式 | 报表中的重点、异常和趋势不会退化为纯文本 |
+| 动态计算 | 基于 HyperFormula 计算同表/跨表公式、聚合、条件与常用日期函数；提供缓存结果回退 | 常见汇总报表在浏览器中可按当前引用关系展示 |
+| 图表与图片 | 解析 OpenXML 图表与嵌入图片，按单元格锚点定位；支持 ECharts 和 Canvas 后端 | 图表保持在原工作表中的业务位置，而不是成为静态附件 |
+| 结构化能力 | 提供工作簿、图表、主题、布局和数据透视表缓存的解析 API | 接入方可在预览之外继续做摘要、审计或二次展示 |
+
+### 工作簿处理流程
+
+![Excel 工作簿到浏览器预览的处理链路](../../docs/assets/excel-to-echarts.svg)
+
+```text
+.xlsx / URL / File / Blob / ArrayBuffer
+                │
+                ▼
+       OpenXML + ExcelJS 解析
+                │
+        ┌───────┼────────┐
+        ▼       ▼        ▼
+   表格与样式  公式计算  图表/图片锚点
+        │       │        │
+        └───────┴────────┘
+                ▼
+     浏览器 DOM 表格 + ECharts / Canvas 图表
+```
+
 ## 安装
 
 ```bash
 pnpm add @excel-preview/core
 # 或 npm install @excel-preview/core
 ```
+
+### Vite 集成：依赖预构建配置
+
+在使用 `@excel-preview/core` 的 Vite 项目中，建议将以下配置加入**使用方项目**的 `vite.config.ts`。这不是组件运行时 API，也不需要加到 Excel 文件处理逻辑中。
+
+原因是：Vite 预构建本包时，可能将 ExcelJS 的一个默认导入改写为动态命名空间导入，从而导致 `Workbook` 在开发服务器中不可用；同时，HyperFormula 的嵌套依赖需要经过 Vite 的 CommonJS 互操作转换。
+
+```ts
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  optimizeDeps: {
+    // 避免预构建 core 时改写 ExcelJS 的默认导入。
+    exclude: ['@excel-preview/core'],
+    // 为 core 的依赖启用 Vite 预构建 / CommonJS 互操作。
+    include: [
+      '@excel-preview/core > exceljs',
+      '@excel-preview/core > fast-xml-parser',
+      '@excel-preview/core > hyperformula',
+      '@excel-preview/core > jszip',
+    ],
+  },
+});
+```
+
+若项目已有 `optimizeDeps`，请将上述 `exclude` / `include` 项合并进现有数组，不要覆盖已有依赖。若已为 ExcelJS 配置浏览器端入口别名，也可保留，例如：
+
+```ts
+resolve: {
+  alias: {
+    exceljs: 'exceljs/dist/exceljs.min.js',
+  },
+},
+```
+
+该配置只影响 Vite 的本地依赖预构建；不影响组件的运行时 API，也不需要修改工作簿文件。配置生效后，请重启 Vite 开发服务器；若 Vite 仍复用旧的依赖预构建缓存，可删除使用方项目的 `node_modules/.vite` 缓存后重启。
 
 ## 快速开始
 
@@ -57,9 +126,46 @@ await viewer.render(arrayBuffer);              // ArrayBuffer
 
 从 URL 加载时，目标服务器必须允许浏览器跨域访问（CORS）。当前仅支持 `.xlsx` / OpenXML 工作簿，不支持旧版 `.xls` 二进制格式。
 
+### URL 请求与错误处理
+
+高阶 `ExcelViewer` 使用 `src` 或 `render()` 读取数据源。需要自定义 URL 请求方法、请求头或凭证时，可先使用底层 `loadData()` 获取 `ArrayBuffer`，再传给 `render()`：
+
+```ts
+import { ExcelViewer, loadData } from '@excel-preview/core';
+
+const buffer = await loadData('/api/reports/monthly.xlsx', {
+  headers: { Authorization: 'Bearer <token>' },
+  withCredentials: true,
+});
+
+const viewer = new ExcelViewer({ target: '#excel-viewer' });
+await viewer.render(buffer);
+```
+
+URL 返回 `403`、`404`、非成功状态或浏览器 CORS 拦截时，加载会失败并触发 `onError`。建议接入方在页面上提供加载中和错误提示，并确保资源服务允许浏览器读取文件。
+
+## 表格、样式与交互
+
+### 已还原的工作表信息
+
+| Excel 信息 | 浏览器预览行为 |
+| --- | --- |
+| 文本、数值、日期、布尔值和数字格式 | 按单元格值与格式显示；公式得到的日期序列号会结合数字格式转换为日期 |
+| 字体、填充、边框、对齐、换行 | 映射为网页单元格样式，并解析 Office 主题色引用 |
+| 合并单元格 | 保留跨行、跨列的合并区域，适用于多级表头和汇总标题 |
+| 隐藏行列与隐藏 Sheet | 隐藏行列不渲染；隐藏与 veryHidden 工作表不进入预览 |
+| 冻结窗格 | 对应表头和首列保持固定，便于滚动阅读大表 |
+| 富文本、超链接与批注 | 保留富文本片段和链接文本；批注以单元格提示方式展示 |
+| 条件格式 | 支持数值比较、受限的单元格比较表达式、色阶与数据条 |
+| Sheet 标签栏与缩放 | 默认显示工作表标签和 50%–200% 缩放控制；可用 `showToolbar: false` 隐藏 |
+
+图片与图表以 Excel 的起止单元格及偏移量为锚点渲染。切换工作表、调整缩放、行高或列宽变化时，组件会重新计算其位置；它们会随工作表内容滚动。
+
 ## 图表渲染
 
 默认会在工作簿包含图表时加载 ECharts 并以 SVG 渲染。若项目已自行引入 ECharts，建议注入实例，避免重复加载：
+
+![Excel 图表到 ECharts 的结构化映射](../../docs/assets/echarts-mapping.svg)
 
 ```ts
 import * as echarts from 'echarts';
@@ -130,6 +236,41 @@ const viewer = new ExcelViewer({
 
 以下内容不应按“完整 Excel 公式引擎”理解：宏和 VBA、外部工作簿引用、数据表公式、部分新版动态数组或 Excel 专有函数，以及 HyperFormula 尚未实现的函数。计算只发生在预览加载阶段，不会修改或保存原工作簿。
 
+### 公式计算与回退策略
+
+![浏览器端公式计算与缓存回退流程](../../docs/assets/dynamic-calculation.svg)
+
+公式预览遵循“**计算结果优先，文件缓存兜底**”的顺序：
+
+1. 加载时，组件为工作簿的工作表建立 HyperFormula 计算上下文，并写入单元格内容和公式。
+2. 对可计算的公式，使用计算引擎结果并按原单元格数字格式显示。
+3. 公式无法计算时，优先使用 `.xlsx` 文件中保存的可用缓存结果。
+4. 缓存也不可用时，保留公式文本或显示 Excel 兼容错误值，例如 `#NAME?`、`#DIV/0!`。
+
+因此，本包可用于阅读“数据 + 公式 + 图表”型业务报表，但不应被用作完整 Excel 编辑器或公式兼容性验证工具。
+
+## 图片与数据透视表缓存
+
+### 图片
+
+工作簿中的嵌入图片会被解析为 `ParsedImage`，并按所属 Sheet 和单元格锚点叠加到预览区域。图片保持原始宽高比，并与图表一样随滚动、缩放和尺寸变化重新定位。
+
+### 数据透视表缓存
+
+`parsePivotTables` 默认关闭，因为解析大型工作簿的数据透视表缓存会增加开销。开启后，组件会将解析结果挂在 `getWorkbook()?.pivotTables` 上；其中包含缓存字段、缓存记录、行/列字段与数据字段定义。
+
+```ts
+const viewer = new ExcelViewer({
+  target: '#excel-viewer',
+  parsePivotTables: true,
+});
+
+await viewer.render(file);
+const pivotTables = viewer.getWorkbook()?.pivotTables ?? [];
+```
+
+这项能力用于读取与利用透视表缓存数据，**不提供** Excel 数据透视表的筛选、拖拽或刷新交互。
+
 ## API
 
 ### `new ExcelViewer(options)`
@@ -140,6 +281,9 @@ const viewer = new ExcelViewer({
 | `src`                | `string \| File \| Blob \| ArrayBuffer`    | 可选的初始工作簿                        |
 | `width` / `height` | `string`                                | 容器尺寸，默认均为`100%`              |
 | `showToolbar`        | `boolean`                               | 是否显示底部 Sheet 标签栏，默认`true` |
+| `initialZoom`        | `number`                                | 初始缩放比例，范围 50–200，默认`100` |
+| `extraColCount`      | `number`                                | 已用区域右侧额外渲染空白列数，默认`5` |
+| `extraRowCount`      | `number`                                | 已用区域下方额外渲染空白行数，默认`20` |
 | `echarts`            | `any`                                   | 可选的 ECharts 实例                     |
 | `chartBackend`       | `'echarts' \| 'canvas' \| 'auto'`         | 图表渲染后端，默认`'echarts'`         |
 | `echartsRenderer`    | `'svg' \| 'canvas'`                      | ECharts 渲染器，默认`'svg'`           |
@@ -157,6 +301,47 @@ const viewer = new ExcelViewer({
 | `setSheet(indexOrName)` | 按索引或名称切换工作表                   |
 | `getWorkbook()`         | 获取解析后的工作簿；未加载时返回`null` |
 | `destroy()`             | 释放图表、图片和 DOM 资源                |
+
+### 配置与生命周期示例
+
+```ts
+const viewer = new ExcelViewer({
+  target: '#excel-viewer',
+  width: '100%',
+  height: '720px',
+  showToolbar: true,
+  initialZoom: 100,
+  parsePivotTables: false,
+  chartBackend: 'echarts',
+  echartsRenderer: 'svg',
+  onRendered: () => console.log('工作簿渲染完成'),
+  onSheetChange: (name, index) => console.log(`切换到 ${index}: ${name}`),
+  onError: (error) => console.error('Excel 预览失败：', error),
+});
+
+await viewer.render(file);
+viewer.setSheet('汇总');
+
+// 页面卸载、弹窗关闭或替换预览器时调用。
+viewer.destroy();
+```
+
+`render()` 可被重复调用加载新文件。组件会清理旧的图表、图片与 DOM 引用，并通过渲染版本控制避免先发起的异步加载覆盖后发起的文件。
+
+## 低层解析与渲染 API
+
+大多数场景只需要 `ExcelViewer`。如果接入方需要把解析结果用于自定义界面、审计或二次分析，可按需使用以下导出：
+
+| 导出 | 作用 |
+| --- | --- |
+| `loadData()` / `isUrlSource()` / `isBinarySource()` | 将 URL、文件或二进制输入规范化，并判断输入类型 |
+| `parseExcel()` / `loadRawWorkbook()` | 解析工作簿为 `ParsedWorkbook`，或取得 ExcelJS 原始工作簿用于高级操作 |
+| `parseCharts()` / `parseChartXmlToModel()` | 解析图表关系、图表 XML 与图表模型 |
+| `parsePivotTables()` | 独立读取数据透视表缓存 |
+| `convertToEChartsOption()` / `computeLayout()` | 将 `ChartModel` 计算为 ECharts 配置与布局 |
+| `TableRenderer` / `ChartRenderer` / `ImageRenderer` | 需要自行组织渲染流程时使用；普通场景不必直接实例化 |
+
+低层 API 面向具备 OpenXML、ExcelJS 或自定义渲染需求的接入方；常规业务页面优先使用 `ExcelViewer`，以便自动处理 Sheet 切换、锚点定位与资源释放。
 
 ## 已支持内容
 

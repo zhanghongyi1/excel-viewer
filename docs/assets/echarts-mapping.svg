@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Excel 图表到 ECharts 映射示意</title>
+  <desc id="desc">左侧是 Excel 图表的结构化信息，中间是图表模型，右侧是 ECharts 和 Canvas 渲染结果。</desc>
+  <defs>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#15324b" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0L12 6L0 12z" fill="#8297ad"/></marker>
+  </defs>
+  <rect width="1200" height="560" rx="24" fill="#f7f9fc"/>
+  <text x="600" y="55" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="28" font-weight="700" fill="#17324d">图表从文件定义到可视化表达</text>
+  <path d="M357 278H438M764 278H844" stroke="#8297ad" stroke-width="5" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="52" y="112" width="305" height="332" rx="18" fill="#fff"/>
+    <rect x="52" y="112" width="305" height="59" rx="18" fill="#107c41"/><rect x="52" y="146" width="305" height="25" fill="#107c41"/>
+    <text x="204" y="150" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#fff">Excel / OOXML 图表定义</text>
+    <g font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#25425e">
+      <text x="84" y="213">• 图表类型与组合关系</text><text x="84" y="254">• 分类、系列与数据引用</text><text x="84" y="295">• 标题、图例、数据标签</text><text x="84" y="336">• 坐标轴、主次轴与堆叠</text><text x="84" y="377">• 主题色与单元格锚点</text>
+    </g>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="438" y="158" width="326" height="240" rx="18" fill="#315efb"/>
+    <text x="601" y="208" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" fill="#fff">ChartModel</text>
+    <path d="M490 246H712M490 286H712M490 326H712" stroke="#9fc2ff" stroke-width="2"/>
+    <g font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#fff">
+      <text x="501" y="274">type / series / categories</text><text x="501" y="314">axes / legend / labels</text><text x="501" y="354">palette / anchor / layout</text>
+    </g>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="844" y="98" width="304" height="366" rx="18" fill="#fff"/>
+    <text x="996" y="143" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#17324d">按运行环境选择渲染</text>
+    <rect x="875" y="174" width="242" height="116" rx="12" fill="#edf4ff"/>
+    <text x="996" y="210" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#315efb">ECharts（优先）</text>
+    <path d="M902 264v-28m25 28v-49m25 49v-18m25 18v-67m25 67v-37" stroke="#5b8cff" stroke-width="13" stroke-linecap="round"/>
+    <path d="M1040 263l19-28 18 11 20-35" fill="none" stroke="#ed8f3a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="875" y="316" width="242" height="116" rx="12" fill="#f4f1ff"/>
+    <text x="996" y="352" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#7057d9">Canvas（后备）</text>
+    <path d="M901 408v-28m27 28v-48m27 48v-19m27 19v-65m27 65v-38" stroke="#a078e8" stroke-width="13" stroke-linecap="round"/>
+  </g>
+  <text x="204" y="492" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" fill="#5d7287">读取工作簿的图表语义</text>
+  <text x="601" y="492" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" fill="#5d7287">渲染库无关的中间模型</text>
+  <text x="996" y="492" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" fill="#5d7287">完整表达与可用性兼顾</text>
+</svg>

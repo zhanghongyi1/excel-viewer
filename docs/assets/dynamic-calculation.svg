@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">动态公式计算与缓存回退流程</title>
+  <desc id="desc">加载 Excel 后，项目构建公式计算器。支持的公式返回实时结果；不支持或无法计算的公式则采用缓存结果或保留错误状态。</desc>
+  <defs>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#15324b" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0L12 6L0 12z" fill="#8297ad"/></marker>
+  </defs>
+  <rect width="1200" height="520" rx="24" fill="#f7f9fc"/>
+  <text x="600" y="56" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="28" font-weight="700" fill="#17324d">浏览器端动态计算：实时结果优先，缓存结果兜底</text>
+  <g filter="url(#shadow)">
+    <rect x="50" y="195" width="218" height="116" rx="18" fill="#107c41"/>
+    <text x="159" y="240" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="23" font-weight="700" fill="#fff">读取工作簿</text>
+    <text x="159" y="272" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" fill="#ddf5e8">单元格、公式、格式</text>
+  </g>
+  <path d="M268 253H370" stroke="#8297ad" stroke-width="5" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="370" y="171" width="256" height="164" rx="18" fill="#315efb"/>
+    <text x="498" y="220" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="23" font-weight="700" fill="#fff">HyperFormula</text>
+    <text x="498" y="252" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" fill="#e9f0ff">同表 / 跨表 / 聚合 / 条件</text>
+    <rect x="401" y="274" width="194" height="34" rx="17" fill="#fff" opacity=".95"/>
+    <text x="498" y="297" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700" fill="#315efb">例如：SUM(Source!B2:B10)</text>
+  </g>
+  <path d="M626 253H703V160H786" fill="none" stroke="#8297ad" stroke-width="5" marker-end="url(#arrow)"/>
+  <path d="M626 253H703V354H786" fill="none" stroke="#8297ad" stroke-width="5" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="786" y="102" width="352" height="116" rx="18" fill="#1d8f66"/>
+    <text x="962" y="149" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="23" font-weight="700" fill="#fff">公式可计算</text>
+    <text x="962" y="181" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" fill="#dcfaee">使用实时结果并按数字格式显示</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="786" y="296" width="352" height="116" rx="18" fill="#ee9a3c"/>
+    <text x="962" y="340" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="23" font-weight="700" fill="#fff">公式不可计算 / 不受支持</text>
+    <text x="962" y="370" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" fill="#fff8e9">优先使用 Excel 缓存；否则保留公式或错误值</text>
+  </g>
+  <path d="M962 218V258" stroke="#8297ad" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="962" y="466" text-anchor="middle" font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#5d7287">只读预览中兼顾“当前计算关系”与“文件兼容性”</text>
+</svg>
