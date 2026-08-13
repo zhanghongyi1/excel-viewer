@@ -18,7 +18,7 @@
 
 ### 工作簿处理流程
 
-![Excel 工作簿到浏览器预览的处理链路](../../docs/assets/excel-to-echarts.svg)
+![Excel 工作簿到浏览器预览的处理链路](https://raw.githubusercontent.com/zhanghongyi1/excel-viewer/main/docs/assets/excel-to-echarts.svg)
 
 ```text
 .xlsx / URL / File / Blob / ArrayBuffer
@@ -165,7 +165,7 @@ URL 返回 `403`、`404`、非成功状态或浏览器 CORS 拦截时，加载�
 
 默认会在工作簿包含图表时加载 ECharts 并以 SVG 渲染。若项目已自行引入 ECharts，建议注入实例，避免重复加载：
 
-![Excel 图表到 ECharts 的结构化映射](../../docs/assets/echarts-mapping.svg)
+![Excel 图表到 ECharts 的结构化映射](https://raw.githubusercontent.com/zhanghongyi1/excel-viewer/main/docs/assets/echarts-mapping.svg)
 
 ```ts
 import * as echarts from 'echarts';
@@ -238,7 +238,7 @@ const viewer = new ExcelViewer({
 
 ### 公式计算与回退策略
 
-![浏览器端公式计算与缓存回退流程](../../docs/assets/dynamic-calculation.svg)
+![浏览器端公式计算与缓存回退流程](https://raw.githubusercontent.com/zhanghongyi1/excel-viewer/main/docs/assets/dynamic-calculation.svg)
 
 公式预览遵循“**计算结果优先，文件缓存兜底**”的顺序：
 
