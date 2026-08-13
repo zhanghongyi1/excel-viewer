@@ -6,6 +6,11 @@ const DEFAULT_ROW_HEIGHT = 20; // Excel 默认行高更紧凑
 const HEADER_COL_WIDTH = 40; // 行号列更窄
 const HEADER_ROW_HEIGHT = 20;
 const EXCEL_FONT = 'Calibri, "Microsoft YaHei", Arial, sans-serif';
+const DEFAULT_EXTRA_ROWS = 20;
+const DEFAULT_EXTRA_COLS = 5;
+const MIN_ZOOM = 50;
+const MAX_ZOOM = 200;
+const ZOOM_STEP = 10;
 
 interface TableRendererConfig {
   container: HTMLElement;
@@ -50,6 +55,9 @@ export class TableRenderer {
   // 最小行数和列数（用于容纳图表）
   private minRowCount = 0;
   private minColCount = 0;
+  private extraRowCount = DEFAULT_EXTRA_ROWS;
+  private extraColCount = DEFAULT_EXTRA_COLS;
+  private zoomLevel = 1;
 
   // 冻结窗格
   private freezeRowCount = 1;
@@ -151,6 +159,9 @@ export class TableRenderer {
     this.options = config.options || {};
     this.minColCount = this.options.minColLength || 0;
     this.minRowCount = this.options.minRowLength || 0;
+    this.extraColCount = Math.max(0, this.options.extraColCount ?? DEFAULT_EXTRA_COLS);
+    this.extraRowCount = Math.max(0, this.options.extraRowCount ?? DEFAULT_EXTRA_ROWS);
+    this.zoomLevel = this.normalizeZoom(this.options.initialZoom ?? 100);
     if (!this.container) throw new Error('[TableRenderer] Container element is required');
     this.createDOM();
   }
@@ -220,15 +231,16 @@ export class TableRenderer {
     scrollEl.innerHTML = '';
     const table = document.createElement('table');
     table.style.cssText = 'border-collapse:collapse;table-layout:fixed;min-width:100%;font-size:13px;';
+    (table.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(this.zoomLevel);
     table.cellSpacing = '0';
     scrollEl.appendChild(table);
 
-    let maxRow = Math.max(sheet.rows.length, this.minRowCount);
+    let maxRow = Math.max(sheet.rows.length + this.extraRowCount, this.minRowCount);
     let maxCol = 0;
     for (const row of sheet.rows) {
       if (row && row.length > maxCol) maxCol = row.length;
     }
-    maxCol = Math.max(maxCol, this.minColCount, 1);
+    maxCol = Math.max(maxCol + this.extraColCount, this.minColCount, 1);
     maxRow = Math.max(maxRow, 1);
 
     // Column headers
@@ -723,8 +735,60 @@ export class TableRenderer {
     });
 
     const emptyTab = document.createElement('div');
-    emptyTab.style.cssText = 'flex:1;border-bottom:1px solid #c0c0c0;background:#e8e8e8;';
+    emptyTab.style.cssText = 'flex:1;min-width:12px;border-bottom:1px solid #c0c0c0;background:#e8e8e8;';
     tabsScroll.appendChild(emptyTab);
+
+    const zoomControl = document.createElement('div');
+    zoomControl.className = 'excel-preview-zoom';
+    zoomControl.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 10px;border-left:1px solid #c0c0c0;border-bottom:1px solid #c0c0c0;background:#f5f5f5;white-space:nowrap;user-select:none;';
+
+    const makeButton = (label: string, title: string, delta: number): HTMLButtonElement => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.title = title;
+      button.setAttribute('aria-label', title);
+      button.style.cssText = 'width:16px;height:22px;padding:0;border:0;background:transparent;color:#555;font-size:16px;line-height:20px;cursor:pointer;';
+      button.addEventListener('click', () => this.setZoom(this.zoomLevel * 100 + delta));
+      return button;
+    };
+
+    const zoomOut = makeButton('−', '缩小', -ZOOM_STEP);
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = String(MIN_ZOOM);
+    slider.max = String(MAX_ZOOM);
+    slider.step = String(ZOOM_STEP);
+    slider.value = String(Math.round(this.zoomLevel * 100));
+    slider.title = '缩放比例';
+    slider.setAttribute('aria-label', '缩放比例');
+    slider.style.cssText = 'width:88px;accent-color:#217346;cursor:pointer;';
+    const zoomIn = makeButton('+', '放大', ZOOM_STEP);
+    const zoomText = document.createElement('span');
+    zoomText.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    zoomText.style.cssText = 'min-width:38px;color:#555;font-size:12px;text-align:right;';
+
+    slider.addEventListener('input', () => this.setZoom(Number(slider.value)));
+    zoomControl.append(zoomOut, slider, zoomIn, zoomText);
+    sheetBar.appendChild(zoomControl);
+  }
+
+  private normalizeZoom(percent: number): number {
+    const finitePercent = Number.isFinite(percent) ? percent : 100;
+    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, finitePercent)) / 100;
+  }
+
+  private setZoom(percent: number): void {
+    const nextZoom = this.normalizeZoom(percent);
+    if (nextZoom === this.zoomLevel) return;
+    this.zoomLevel = nextZoom;
+    const table = this.scrollEl?.querySelector('table');
+    if (table) {
+      (table.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(this.zoomLevel);
+    }
+    this.renderSheetBar();
+    // Charts and images are positioned from cell coordinates, which are also zoomed.
+    this.onDimensionsChangeCallback?.();
   }
 
   switchSheet(index: number): void {
@@ -787,7 +851,12 @@ export class TableRenderer {
     }
     const width = col < sheet.colWidths.length ? getColWidth(sheet, col, this.getColWidthOverrides()) : DEFAULT_COL_WIDTH;
     const height = row < sheet.rowHeights.length ? getRowHeight(sheet, row, this.getRowHeightOverrides()) : DEFAULT_ROW_HEIGHT;
-    return { left, top, width, height };
+    return {
+      left: left * this.zoomLevel,
+      top: top * this.zoomLevel,
+      width: width * this.zoomLevel,
+      height: height * this.zoomLevel,
+    };
   }
 
   onSwitchSheet(callback: (index: number) => void): void {

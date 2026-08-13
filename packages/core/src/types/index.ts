@@ -269,6 +269,12 @@ export interface ViewerOptions extends ChartRenderOptions {
   minColLength?: number;
   /** 最小行数 */
   minRowLength?: number;
+  /** 已用区域右侧额外渲染的空白列数，默认 5 */
+  extraColCount?: number;
+  /** 已用区域下方额外渲染的空白行数，默认 20 */
+  extraRowCount?: number;
+  /** 初始缩放比例，取值 50–200，默认 100 */
+  initialZoom?: number;
   /** 是否显示底部 Sheet 切换栏 */
   showToolbar?: boolean;
 }
@@ -290,6 +296,12 @@ export interface ExcelViewerOptions extends ChartRenderOptions {
   height?: string;
   /** 是否显示底部 Sheet 切换栏 */
   showToolbar?: boolean;
+  /** 已用区域右侧额外渲染的空白列数，默认 5 */
+  extraColCount?: number;
+  /** 已用区域下方额外渲染的空白行数，默认 20 */
+  extraRowCount?: number;
+  /** 初始缩放比例，取值 50–200，默认 100 */
+  initialZoom?: number;
   /** 是否解析数据透视表缓存（默认 false，解析大文件会增加开销） */
   parsePivotTables?: boolean;
   /** 渲染完成回调 */

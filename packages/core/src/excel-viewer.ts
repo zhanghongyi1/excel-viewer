@@ -31,6 +31,9 @@ export class ExcelViewer {
       width: '100%',
       height: '100%',
       showToolbar: true,
+      extraColCount: 5,
+      extraRowCount: 20,
+      initialZoom: 100,
       parsePivotTables: false,
       // ECharts 是默认主渲染后端，仅在明确指定 canvas 时切换。
       chartBackend: 'echarts',
@@ -148,6 +151,7 @@ export class ExcelViewer {
             echartsRenderer: this.options.echartsRenderer,
           });
         }
+        this.chartRenderer.setPositionFn((col, row) => tableRenderer.getCellPosition(col, row));
         this.renderCurrentSheetCharts();
       }
 
@@ -158,6 +162,7 @@ export class ExcelViewer {
             container: tableRenderer.getScrollContainer()!,
           });
         }
+        this.imageRenderer.setPositionFn((col, row) => tableRenderer.getCellPosition(col, row));
         this.renderCurrentSheetImages();
       }
 
@@ -268,7 +273,13 @@ export class ExcelViewer {
     const tableRenderer = new TableRenderer();
     tableRenderer.init({
       container: this.wrapperEl!,
-      options: { echarts: this.options.echarts, showToolbar: this.options.showToolbar },
+      options: {
+        echarts: this.options.echarts,
+        showToolbar: this.options.showToolbar,
+        extraColCount: this.options.extraColCount,
+        extraRowCount: this.options.extraRowCount,
+        initialZoom: this.options.initialZoom,
+      },
     });
     tableRenderer.onSwitchSheet((idx) => {
       this.chartRenderer?.clearAll();

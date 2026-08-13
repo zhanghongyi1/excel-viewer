@@ -1,6 +1,6 @@
 {
     "name": "@excel-preview/core",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "description": "Core engine for Excel preview and chart rendering (framework-agnostic)",
     "type": "module",
     "main": "./dist/index.cjs",

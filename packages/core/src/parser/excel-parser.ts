@@ -12,6 +12,8 @@ import ExcelJS from 'exceljs';
 import { colLetterToNumber } from '../utils/ooxml';
 import { HyperFormula, DetailedCellError } from 'hyperformula';
 import type { RawCellContent } from 'hyperformula';
+import { parseThemeFromZip } from '../chart/theme-parser';
+import type { ChartTheme } from '../chart/theme-parser';
 import type {
   ParsedWorkbook,
   ParsedSheet,
@@ -38,25 +40,36 @@ const COL_WIDTH_TO_PX = 7; // exceljs 列宽单位 ≈ 7px
 /** Excel 网格线和边距额外像素 */
 const COL_WIDTH_MARGIN = 5;
 
-/** 行高点转像素系数 (1pt = 1.333px @ 96dpi) */
-const PT_TO_PX = 1.333;
-
-/** 索引颜色表 (Excel 内置) */
+/** Excel 内置 indexed 色板（OOXML 标准色表的可携带部分）。 */
 const INDEXED_COLORS: Record<number, string> = {
   0: '#000000', 1: '#FFFFFF', 2: '#FF0000', 3: '#00FF00', 4: '#0000FF',
   5: '#FFFF00', 6: '#FF00FF', 7: '#00FFFF', 8: '#000000', 9: '#FFFFFF',
   10: '#FF0000', 11: '#00FF00', 12: '#0000FF', 13: '#FFFF00', 14: '#FF00FF',
   15: '#00FFFF', 16: '#800000', 17: '#008000', 18: '#000080', 19: '#808000',
   20: '#800080', 21: '#008080', 22: '#C0C0C0', 23: '#808080',
+  24: '#9999FF', 25: '#993366', 26: '#FFFFCC', 27: '#CCFFFF', 28: '#660066',
+  29: '#FF8080', 30: '#0066CC', 31: '#CCCCFF', 32: '#000080', 33: '#FF00FF',
+  34: '#FFFF00', 35: '#00FFFF', 36: '#800080', 37: '#800000', 38: '#008080',
+  39: '#0000FF', 40: '#00CCFF', 41: '#CCFFFF', 42: '#CCFFCC', 43: '#FFFF99',
+  44: '#99CCFF', 45: '#FF99CC', 46: '#CC99FF', 47: '#FFCC99', 48: '#3366FF',
+  49: '#33CCCC', 50: '#99CC00', 51: '#FFCC00', 52: '#FF9900', 53: '#FF6600',
+  54: '#666699', 55: '#969696', 56: '#003366', 57: '#339966', 58: '#003300',
+  59: '#333300', 60: '#993300', 61: '#993366', 62: '#333399', 63: '#333333',
 };
 
-/** 主题颜色表 (简化版) */
-const THEME_COLORS: string[] = [
-  '#FFFFFF', '#F2F2F2', '#E7E6E6', '#D9D9D9', '#BFBCBB',
-  '#A6A5A5', '#848484', '#474744', '#44546A', '#ED7D31',
-  '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47', '#7030A0',
-  '#C00000', '#BF8F00', '#305497', '#375623', '#264478',
-];
+/**
+ * OOXML theme color indices are positional, not a greyscale palette:
+ * 0=lt1, 1=dk1, 2=lt2, 3=dk2, 4-9=accent1-6, 10=hlink, 11=folHlink.
+ */
+function themeColorsFromTheme(theme: ChartTheme): string[] {
+  const { colors } = theme;
+  return [
+    colors.lt1, colors.dk1, colors.lt2, colors.dk2,
+    colors.accent1, colors.accent2, colors.accent3,
+    colors.accent4, colors.accent5, colors.accent6,
+    colors.hlink, colors.folHlink,
+  ];
+}
 
 // ===== 类型转换工具函数 =====
 
@@ -93,45 +106,74 @@ function argbToHex(color: string | undefined): string {
 /**
  * 获取主题颜色
  */
-function getThemeColor(themeIndex: number, tint?: number): string {
-  if (themeIndex < 0 || themeIndex >= THEME_COLORS.length) {
+function getThemeColor(themeIndex: number, tint: number | string | undefined, themeColors: string[]): string {
+  if (themeIndex < 0 || themeIndex >= themeColors.length) {
     return '#C7C9CC';
   }
 
-  let baseColor = THEME_COLORS[themeIndex];
+  let baseColor = themeColors[themeIndex];
 
-  if (tint !== undefined && tint !== null) {
-    baseColor = applyTint(baseColor, tint);
+  const numericTint = typeof tint === 'string' ? Number(tint) : tint;
+  if (numericTint !== undefined && numericTint !== null && Number.isFinite(numericTint)) {
+    baseColor = applyTint(baseColor, numericTint);
   }
 
   return baseColor;
+}
+
+/** Resolve ExcelJS colour objects using the workbook's actual OOXML theme. */
+function resolveColor(color: any, themeColors: string[], fallback = '#000000'): string {
+  if (!color) return fallback;
+  if (typeof color === 'string') return argbToHex(color);
+  if (color.argb) return argbToHex(color.argb);
+  if (color.theme !== undefined) return getThemeColor(color.theme, color.tint, themeColors);
+  if (color.indexed !== undefined) return INDEXED_COLORS[color.indexed] || fallback;
+  return fallback;
 }
 
 /**
  * 应用色调调整
  */
 function applyTint(hexColor: string, tint: number): string {
-  // 移除 # 号
-  let hex = hexColor.replace('#', '');
+  // OOXML tint adjusts HSL luminosity, not each RGB channel independently.
+  // Clamp malformed producer values so a damaged file cannot generate invalid CSS.
+  const safeTint = Math.max(-1, Math.min(1, tint));
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16) / 255;
+  const g = parseInt(hex.substring(2, 4), 16) / 255;
+  const b = parseInt(hex.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  let l = (max + min) / 2;
 
-  let r = parseInt(hex.substring(0, 2), 16);
-  let g = parseInt(hex.substring(2, 4), 16);
-  let b = parseInt(hex.substring(4, 6), 16);
-
-  if (tint > 0) {
-    // 向白色混合
-    r = Math.round(r + (255 - r) * tint);
-    g = Math.round(g + (255 - g) * tint);
-    b = Math.round(b + (255 - b) * tint);
-  } else {
-    // 向黑色混合
-    const absTint = Math.abs(tint);
-    r = Math.round(r * (1 - absTint));
-    g = Math.round(g * (1 - absTint));
-    b = Math.round(b * (1 - absTint));
+  if (max !== min) {
+    const delta = max - min;
+    s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+    if (max === r) h = (g - b) / delta + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / delta + 2;
+    else h = (r - g) / delta + 4;
+    h /= 6;
   }
 
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  l = safeTint < 0 ? l * (1 + safeTint) : l * (1 - safeTint) + safeTint;
+  const hueToRgb = (p: number, q: number, t: number): number => {
+    let value = t;
+    if (value < 0) value += 1;
+    if (value > 1) value -= 1;
+    if (value < 1 / 6) return p + (q - p) * 6 * value;
+    if (value < 1 / 2) return q;
+    if (value < 2 / 3) return p + (q - p) * (2 / 3 - value) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const toHex = (value: number) => Math.round(value * 255).toString(16).padStart(2, '0');
+  const rgb = s === 0
+    ? [l, l, l]
+    : [hueToRgb(p, q, h + 1 / 3), hueToRgb(p, q, h), hueToRgb(p, q, h - 1 / 3)];
+  return `#${toHex(rgb[0])}${toHex(rgb[1])}${toHex(rgb[2])}`;
 }
 
 // ===== 核心解析函数 =====
@@ -139,7 +181,7 @@ function applyTint(hexColor: string, tint: number): string {
 /**
  * 解析单元格样式
  */
-function parseCellStyle(cell: ExcelJS.Cell): CellStyle {
+function parseCellStyle(cell: ExcelJS.Cell, themeColors: string[]): CellStyle {
   const style: CellStyle = {};
   const cellStyle: any = (cell as any).style || {};
 
@@ -148,9 +190,11 @@ function parseCellStyle(cell: ExcelJS.Cell): CellStyle {
     style.font = {};
     if (cellStyle.font.name) style.font.name = cellStyle.font.name;
     if (cellStyle.font.size !== undefined) {
-      // Excel 字号是 points，转换为 px (1pt ≈ 1.333px，但浏览器渲染通常需要调整)
-      // Excel 8pt 字体在浏览器中应该显示为约 11px
-      style.font.size = Math.round(cellStyle.font.size * 1.333);
+      // Browser CSS uses a different text rasterisation path than Excel.
+      // Using the physical pt→px multiplier made an 11pt Excel font render
+      // as 15px, visibly larger than the source workbook. Keep the numeric
+      // size so the preview matches Excel's on-screen visual scale.
+      style.font.size = cellStyle.font.size;
     }
     if (cellStyle.font.bold !== undefined) style.font.bold = cellStyle.font.bold;
     if (cellStyle.font.italic !== undefined) style.font.italic = cellStyle.font.italic;
@@ -159,30 +203,14 @@ function parseCellStyle(cell: ExcelJS.Cell): CellStyle {
 
     // 字体颜色
     if (cellStyle.font.color) {
-      let fontColor = '#000000';
-      if (typeof cellStyle.font.color === 'string') {
-        fontColor = argbToHex(cellStyle.font.color as string);
-      } else if (cellStyle.font.color.argb) {
-        fontColor = argbToHex(cellStyle.font.color.argb);
-      } else if (cellStyle.font.color.theme !== undefined) {
-        fontColor = getThemeColor(cellStyle.font.color.theme, cellStyle.font.color.tint);
-      } else if (cellStyle.font.color.indexed !== undefined) {
-        fontColor = INDEXED_COLORS[cellStyle.font.color.indexed] || '#000000';
-      }
-      style.font.color = fontColor;
+      style.font.color = resolveColor(cellStyle.font.color, themeColors);
     }
   }
 
     // 背景色 (填充)
   if ((cellStyle as any).fill && (cellStyle as any).fill?.fgColor) {
     const fgColor: any = (cellStyle as any).fill.fgColor;
-    if (fgColor.argb) {
-      style.bgcolor = argbToHex(fgColor.argb);
-    } else if (fgColor.theme !== undefined) {
-      style.bgcolor = getThemeColor(fgColor.theme, fgColor.tint);
-    } else if (fgColor.indexed !== undefined) {
-      style.bgcolor = INDEXED_COLORS[fgColor.indexed] || '#C7C9CC';
-    }
+    style.bgcolor = resolveColor(fgColor, themeColors, '#C7C9CC');
   }
 
   // 对齐方式
@@ -211,15 +239,7 @@ function parseCellStyle(cell: ExcelJS.Cell): CellStyle {
       if (border) {
         let borderColor = '#000000';
         if (border.color) {
-          if (typeof border.color === 'string') {
-            borderColor = border.color;
-          } else if (border.color.argb) {
-            borderColor = argbToHex(border.color.argb);
-          } else if (border.color.theme !== undefined) {
-            borderColor = getThemeColor(border.color.theme, border.color.tint);
-          } else if (border.color.indexed !== undefined) {
-            borderColor = INDEXED_COLORS[border.color.indexed] || '#000000';
-          }
+          borderColor = resolveColor(border.color, themeColors);
         }
         style.border[pos] = [border.style || 'thin', borderColor];
       }
@@ -713,7 +733,8 @@ function formatDateValue(value: Date, cell: ExcelJS.Cell): string {
 function parseSheet(
   worksheet: ExcelJS.Worksheet,
   sheetIndex: number,
-  calculator?: FormulaCalculator
+  calculator: FormulaCalculator | undefined,
+  themeColors: string[],
 ): ParsedSheet {
   const rows: ParsedCell[][] = [];
   const merges: MergeInfo[] = [];
@@ -775,8 +796,9 @@ function parseSheet(
     if (row.hidden) {
       hiddenRows.add(rowNumber - 1);
     }
-    // 记录行高 (exceljs 返回的行高单位为 pt，需转为 px)
-    rowHeights[rowNumber - 1] = row.height ? Math.round(row.height * PT_TO_PX) : DEFAULT_ROW_HEIGHT;
+    // Excel 的行高数值若按物理 pt→px 转换会使 25 高度变成 33px，
+    // 在浏览器预览中明显比 Excel 网格更松。保留该数值以匹配屏幕视觉高度。
+    rowHeights[rowNumber - 1] = row.height ? Math.round(row.height) : DEFAULT_ROW_HEIGHT;
 
     const cells: ParsedCell[] = [];
 
@@ -823,7 +845,7 @@ function parseSheet(
         value: getParsedFormulaValue(cell, calculator, worksheet.name, rowNumber, colNumber),
         text: getParsedFormulaText(cell, calculator, worksheet.name, rowNumber, colNumber),
         type: getCellType(cell),
-        style: parseCellStyle(cell),
+        style: parseCellStyle(cell, themeColors),
       };
 
       // 提取富文本片段
@@ -836,14 +858,14 @@ function parseSheet(
             if (r.font) {
               run.font = {};
               if (r.font.name) run.font.name = r.font.name;
-              if (r.font.size !== undefined) run.font.size = Math.round(r.font.size * 1.333);
+              if (r.font.size !== undefined) run.font.size = r.font.size;
               if (r.font.bold) run.font.bold = true;
               if (r.font.italic) run.font.italic = true;
               if (r.font.underline) run.font.underline = !!r.font.underline;
               if (r.font.strike) run.font.strike = true;
               if (r.font.color) {
                 const fc = r.font.color;
-                run.font.color = fc.argb ? argbToHex(fc.argb) : (fc.theme !== undefined ? getThemeColor(fc.theme, fc.tint) : '#000000');
+                run.font.color = resolveColor(fc, themeColors);
               }
             }
             return run;
@@ -917,14 +939,14 @@ function parseSheet(
           if (rule.fill) {
             const fillColor = rule.fill.fgColor ?? rule.fill.bgColor;
             if (fillColor) {
-              parsedRule.fill = argbToHex(fillColor.argb || fillColor);
+              parsedRule.fill = resolveColor(fillColor, themeColors, '#C7C9CC');
             }
           }
           if (rule.font) {
             parsedRule.font = {};
             if (rule.font.color) {
               const fc = rule.font.color;
-              parsedRule.font.color = argbToHex(fc.argb || fc.theme || fc);
+              parsedRule.font.color = resolveColor(fc, themeColors);
             }
             if (rule.font.bold !== undefined) parsedRule.font.bold = rule.font.bold;
             if (rule.font.italic !== undefined) parsedRule.font.italic = rule.font.italic;
@@ -941,7 +963,7 @@ function parseSheet(
                 type: v.type as any,
                 value: v.value !== undefined ? v.value : undefined,
               })),
-              colors: (cs.colors || []).map((c: any) => argbToHex(c.argb || c)),
+              colors: (cs.colors || []).map((c: any) => resolveColor(c, themeColors, '#C7C9CC')),
             };
           }
 
@@ -954,7 +976,7 @@ function parseSheet(
                 type: v.type as any,
                 value: v.value !== undefined ? v.value : undefined,
               })),
-              color: argbToHex(db.color?.argb || db.color),
+              color: resolveColor(db.color, themeColors, '#C7C9CC'),
               showValue: db.showValue !== false,
             };
           }
@@ -1011,6 +1033,9 @@ export async function parseExcel(
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
+    // ExcelJS preserves theme references (e.g. { theme: 1 }) on cell styles.
+    // Resolve them from xl/theme/theme1.xml before producing browser CSS.
+    const themeColors = themeColorsFromTheme(await parseThemeFromZip(buffer));
 
     if (!workbook.worksheets || workbook.worksheets.length === 0) {
       throw new Error('未获取到任何工作表，可能文件格式不正确或文件已损坏');
@@ -1026,7 +1051,7 @@ export async function parseExcel(
           return;
         }
 
-        sheets.push(parseSheet(worksheet, index, calculator));
+        sheets.push(parseSheet(worksheet, index, calculator, themeColors));
       });
     } finally {
       calculator?.dispose();
