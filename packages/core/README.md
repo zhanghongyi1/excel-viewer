@@ -13,7 +13,7 @@ pnpm add @excel-preview/core
 
 ## Vite
 
-在**使用本包的 Vite 项目**中加入以下配置。它避免 Vite 预构建 core 时改写 ExcelJS 默认导入，并处理 HyperFormula 的 CommonJS 互操作。
+在**使用本包的 Vite 项目**中加入以下开发期配置。它避免 Vite 预构建 core 时改写 ExcelJS 默认导入，并处理 HyperFormula 的 CommonJS 互操作。
 
 ```ts
 // vite.config.ts
@@ -40,7 +40,155 @@ resolve: {
 },
 ```
 
-修改后重启 Vite；仍命中旧缓存时删除使用方项目的 `node_modules/.vite`。
+这仅影响 Vite 开发期依赖预构建。修改后重启 Vite；仍命中旧缓存时删除使用方项目的 `node_modules/.vite`。
+
+## 框架集成
+
+本包不提供 Vue、React、Angular 或 Svelte 的框架包装组件；以下示例只处理生命周期和 SSR 边界，实际业务组件可自行封装。
+
+### 通用规则
+
+1. 挂载元素必须已有明确高度。
+2. 仅在客户端 DOM 已挂载后创建 `ExcelViewer`。
+3. 文件或 URL 变化时调用同一实例的 `viewer.render(source)`，不要重复创建实例。
+4. 组件卸载、路由切换或弹窗关闭时必须调用 `viewer.destroy()`。
+
+| 场景 | 初始化位置 | 构建配置 |
+| --- | --- | --- |
+| 原生 JS / Vue / React / Svelte + Vite | DOM 挂载后 | 使用上面的 `vite.config.ts` `optimizeDeps` |
+| Angular | `ngAfterViewInit` | 默认 Angular CLI 不读取 `vite.config.ts`；若使用自定义 Vite 构建器，应用同一份配置 |
+| Next.js | Client Component 的 `useEffect` | 不使用 `optimizeDeps`；必要时关闭该组件 SSR |
+| Nuxt | `.client.vue` 或 `<ClientOnly>` 内的 `onMounted` | 将同一份 `optimizeDeps` 放进 `nuxt.config.ts` 的 `vite` 字段 |
+| SvelteKit | `onMount` | 使用上面的 `vite.config.ts` `optimizeDeps` |
+| Astro | 被 `client:only` 加载的框架组件内 | 将同一份 `optimizeDeps` 放进 `astro.config.*` 的 `vite` 字段 |
+
+<details>
+<summary>React / Vite</summary>
+
+React 开发模式会额外执行一次 Effect 的建立/清理检查，因此清理函数必须调用 `destroy()`。
+
+```tsx
+import { useEffect, useRef } from 'react';
+import { ExcelViewer, type ExcelSource } from '@excel-preview/core';
+
+export function ExcelPreview({ source }: { source?: ExcelSource }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<ExcelViewer | null>(null);
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const viewer = new ExcelViewer({ target: hostRef.current, onError: console.error });
+    viewerRef.current = viewer;
+    return () => {
+      viewer.destroy();
+      viewerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (source) void viewerRef.current?.render(source);
+  }, [source]);
+
+  return <div ref={hostRef} style={{ height: 700 }} />;
+}
+```
+
+</details>
+
+<details>
+<summary>Vue 3 / Vite</summary>
+
+```vue
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { ExcelViewer, type ExcelSource } from '@excel-preview/core';
+
+const props = defineProps<{ source?: ExcelSource }>();
+const host = ref<HTMLDivElement>();
+let viewer: ExcelViewer | undefined;
+
+onMounted(() => {
+  viewer = new ExcelViewer({ target: host.value!, onError: console.error });
+  if (props.source) void viewer.render(props.source);
+});
+
+watch(() => props.source, (source) => {
+  if (source && viewer) void viewer.render(source);
+});
+
+onUnmounted(() => viewer?.destroy());
+</script>
+
+<template><div ref="host" style="height: 700px" /></template>
+```
+
+</details>
+
+<details>
+<summary>Angular</summary>
+
+```ts
+import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
+import { ExcelViewer } from '@excel-preview/core';
+
+@Component({
+  selector: 'app-excel-preview',
+  template: '<div #host style="height: 700px"></div>',
+})
+export class ExcelPreviewComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('host') host!: ElementRef<HTMLDivElement>;
+  private viewer?: ExcelViewer;
+
+  ngAfterViewInit() {
+    this.viewer = new ExcelViewer({ target: this.host.nativeElement, onError: console.error });
+  }
+
+  ngOnDestroy() {
+    this.viewer?.destroy();
+  }
+}
+```
+
+输入源在 `@Input()` 中变化时，在 `ngOnChanges` 中判断 `this.viewer` 已创建后调用 `this.viewer.render(source)`。
+
+</details>
+
+<details>
+<summary>Svelte / SvelteKit</summary>
+
+```svelte
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { ExcelViewer, type ExcelSource } from '@excel-preview/core';
+
+  export let source: ExcelSource | undefined;
+  let host: HTMLDivElement;
+
+  onMount(() => {
+    const viewer = new ExcelViewer({ target: host, onError: console.error });
+    if (source) void viewer.render(source);
+    return () => viewer.destroy();
+  });
+</script>
+
+<div bind:this={host} style="height: 700px"></div>
+```
+
+SvelteKit 的浏览器 API 逻辑应放在 `onMount`；源文件变化时调用保存的实例的 `render()`。
+
+</details>
+
+### SSR：Next.js、Nuxt、Astro
+
+`ExcelViewer` 操作 DOM，实例创建必须仅在浏览器执行。
+
+| 框架 | 推荐方式 |
+| --- | --- |
+| Next.js | 将预览组件标记为 `'use client'`，并在 `useEffect` 中创建实例；若需要完全跳过预渲染，在 Client Component 内用 `dynamic(() => import('./ExcelPreview'), { ssr: false })`。 |
+| Nuxt | 使用 `components/ExcelPreview.client.vue`，或以 `<ClientOnly>` 包裹组件；实例放在 `onMounted`。配置示例：`defineNuxtConfig({ vite: { optimizeDeps: { /* 使用上文配置 */ } } })`。 |
+| Astro | 使用框架组件并加 `client:only="react"`、`client:only="vue"` 或对应框架名；配置示例：`defineConfig({ vite: { optimizeDeps: { /* 使用上文配置 */ } } })`。 |
+
+上述 client-only 策略避免服务端访问 `window`、`document` 等浏览器 API，也避免 hydration 不一致。
 
 ## 最小示例
 
